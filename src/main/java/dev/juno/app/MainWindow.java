@@ -69,11 +69,9 @@ public final class MainWindow {
         usage.setTooltip(new javafx.scene.control.Tooltip("Your Claude plan's limits, from Claude Code's rate-limit "
                 + "events. Shown once an agent has run."));
 
-        Button help = Ui.button("?", () -> SettingsWindow.show(ctx, stage, SettingsWindow.Page.COMMANDS));
-        Ui.withTip(help, "Commands");
         Button settings = Ui.button("Settings", () -> SettingsWindow.show(ctx, stage, SettingsWindow.Page.KEYS));
 
-        HBox bar = new HBox(10, logo, add, switcher, board, notes, Ui.grow(), usage, help, settings);
+        HBox bar = new HBox(10, logo, add, switcher, board, notes, Ui.grow(), usage, settings);
         bar.setAlignment(Pos.CENTER_LEFT);
         bar.getStyleClass().add("toolbar-bar");
 

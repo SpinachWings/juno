@@ -102,6 +102,10 @@
     The recap lists the last six top-level actions, with paths relative to the agent's folder.
 15. A ❓ question stays highlighted until you reply or the agent sends a newer reply (e.g. after async sub-agents).
 
+### Changes after review (same session)
+- **Toolbar ? removed** (your call; `docs/design.md` §5.6 and §7.2 updated): the commands reference is Settings →
+  Commands and `/help` in any pane.
+
 ### Known issues
 - Bold Markdown has no bold face in Share Tech Mono (shown brighter instead of bold).
 - The `Notification` hook event still hasn't been exercised against the real CLI.

@@ -214,8 +214,8 @@ skills and commands — the way to change anything locked. Your own profiles are
   entry skill (`/activatesuperpowers` → `using-superpowers`).
 
 ### 5.6 Commands
-Reference of every command (§8) — what, where (any pane / Juno / profile command), example — also via `/help` and the
-toolbar **?**. Lists the built-in prompts (§11) read-only.
+Reference of every command (§8) — what, where (any pane / Juno / profile command), example — also via `/help`. Lists
+the built-in prompts (§11) read-only.
 
 ## 6. Built-in profiles
 
@@ -377,7 +377,7 @@ All worktrees of a repository (your checkout, agents' worktrees, snapshots) shar
 ### 7.2 Top bar and toolbar
 - **Pane top bar:** status (+ reason tag or ⏳), unread dot, name, profile, project and branch (or "no folder"), model
   and effort; resume, stop, maximise, split, **⋯ options menu** (§7.10). The agent's colour outlines the pane.
-- **Toolbar:** title, **+ New agent**, board / notes toggle, **inbox**, **usage-limit meter**, **?** commands, Settings.
+- **Toolbar:** title, **+ New agent**, board / notes toggle, **inbox**, **usage-limit meter**, Settings.
 - **Inbox:** count and list of everything waiting on you — assignment proposals, link suggestions, fresh-start
   approvals, permission requests 🔐, folder requests and repositories to clone 📁, missing keys 🔑, review comments to
   approve, `/checkforcomments` decisions, questions ❓, failed or stuck pipelines ⚠, failures and interruptions ⏸.
