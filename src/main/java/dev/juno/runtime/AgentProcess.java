@@ -160,6 +160,15 @@ public final class AgentProcess {
                 .exceptionally(t -> { kill(); return null; });
     }
 
+    /** Waits up to {@code ms} for the process to have ended (after {@link #kill()}). */
+    public void awaitExit(long ms) {
+        try {
+            process.waitFor(Math.max(0, ms), java.util.concurrent.TimeUnit.MILLISECONDS);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+    }
+
     public long pid() {
         return process.pid();
     }

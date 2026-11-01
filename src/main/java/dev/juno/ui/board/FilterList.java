@@ -2,7 +2,6 @@ package dev.juno.ui.board;
 
 import dev.juno.app.AppContext;
 import dev.juno.model.Agent;
-import dev.juno.model.BoardLayout;
 import dev.juno.runtime.AgentRuntime;
 import dev.juno.runtime.LiveAgent;
 import dev.juno.runtime.Meters;
@@ -115,18 +114,13 @@ public final class FilterList {
         };
     }
 
+    /** Juno's row: like any agent's, but she can't be hidden (design §3). */
     private HBox junoRow() {
-        CheckBox shown = new CheckBox();
+        HBox row = row(ctx.runtime.juno());
+        CheckBox shown = (CheckBox) row.getChildren().get(0);
         shown.setSelected(true);
         shown.setDisable(true);
         Ui.withTip(shown, "Juno can't be hidden.");
-        Label name = new Label("Juno");
-        name.getStyleClass().add("pane-name");
-        Label what = Ui.dim("orchestrator");
-        HBox row = new HBox(8, shown, swatch("#FF4FD8"), new VBox(0, name, what));
-        row.setAlignment(Pos.CENTER_LEFT);
-        row.getStyleClass().add("agent-row");
-        row.setOnMouseClicked(e -> board.used(BoardLayout.JUNO));
         return row;
     }
 

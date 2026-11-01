@@ -51,13 +51,15 @@ public final class AgentPane {
     private final Label modelLabel = new Label();
     private final Button resume = Ui.button("⟳", this::resume);
     private final Button stop = Ui.button("■", this::stop);
-    private final Label contacts = new Label();
+    private final HBox contacts = new HBox(4);
     private final Label context = new Label();
     private final Label turnInfo = new Label();
     private final Label pending = new Label();
     private final VBox cards = new VBox(6);
     private final TextArea input = new TextArea();
+    private final boolean juno;
     private String shownPermission;
+    private String shownProposals = "";
     private boolean folderCardShown;
 
     public AgentPane(AppContext ctx, Agent agent, PaneHost host) {
@@ -66,6 +68,7 @@ public final class AgentPane {
         this.runtime = ctx.runtime;
         this.commands = new PaneCommands(runtime);
         this.agent = agent;
+        this.juno = dev.juno.runtime.Orchestration.isJuno(agent);
         this.output = new OutputView(() -> agent.name, () -> ctx.runtime.folder(agent).toString());
 
         unread.getStyleClass().add("unread-dot");
@@ -80,7 +83,8 @@ public final class AgentPane {
         Ui.withTip(resume, "Resume: continue after an interruption, with a recap of what was done");
         Ui.withTip(stop, "Stop the current turn (/stop); the conversation is kept");
         Button menu = Ui.button("⋯", this::toggleOptions);
-        Ui.withTip(menu, "Options: name, colour, project, model, effort, keys, rules, conversations, delete");
+        Ui.withTip(menu, juno ? "Options: model, effort, rules, conversations"
+                : "Options: name, colour, project, model, effort, keys, rules, conversations, delete");
         Button right = Ui.button("⇥", () -> host.split(agent.id, true));
         Ui.withTip(right, "Split: a new pane to the right");
         Button down = Ui.button("⤓", () -> host.split(agent.id, false));
@@ -88,8 +92,9 @@ public final class AgentPane {
         Button hide = Ui.button("✕", () -> host.hide(agent.id));
         Ui.withTip(hide, "Hide this pane. " + agent.name + " keeps running; show it again from the agent list.");
         Ui.withTip(maximise, "Fill the board (double-click the bar; Esc restores)");
-        top = new HBox(6, status, unread, name, where, Ui.grow(), modelLabel, resume, stop, right, down, maximise,
-                hide, menu);
+        top = new HBox(6, status, unread, name, where, Ui.grow(), modelLabel, resume, stop, right, down, maximise);
+        if (!juno) top.getChildren().add(hide); // Juno is always on the board (design §3)
+        top.getChildren().add(menu);
         top.setAlignment(Pos.CENTER_LEFT);
         top.getStyleClass().add("pane-top");
         top.setOnMouseClicked(e -> {
@@ -99,9 +104,11 @@ public final class AgentPane {
         this.options.setVisible(false);
         this.options.managedProperty().bind(this.options.visibleProperty());
 
-        contacts.getStyleClass().add("dim");
+        contacts.setAlignment(Pos.CENTER_LEFT);
+        contacts.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE); // the turn info shrinks first
         context.getStyleClass().add("meter-text");
         turnInfo.getStyleClass().add("dim");
+        turnInfo.setMinWidth(0);
         pending.getStyleClass().add("warn");
         HBox meters = new HBox(14, contacts, Ui.grow(), pending, turnInfo, context);
         meters.setAlignment(Pos.CENTER_LEFT);
@@ -122,7 +129,16 @@ public final class AgentPane {
         output.onUserScroll(() -> runtime.markRead(agent));
         output.node().setOnMousePressed(e -> runtime.markRead(agent));
 
-        VBox bottom = new VBox(6, cards, meters, input);
+        // Cards (permission, folder, Juno's proposals) scroll once they'd take more than half the pane.
+        javafx.scene.control.ScrollPane cardScroll = new javafx.scene.control.ScrollPane(cards);
+        cardScroll.setFitToWidth(true);
+        cardScroll.setHbarPolicy(javafx.scene.control.ScrollPane.ScrollBarPolicy.NEVER);
+        cardScroll.getStyleClass().add("cards-scroll");
+        cardScroll.prefViewportHeightProperty().bind(javafx.beans.binding.Bindings.min(cards.heightProperty(),
+                root.heightProperty().multiply(0.5)));
+        cardScroll.visibleProperty().bind(javafx.beans.binding.Bindings.isNotEmpty(cards.getChildren()));
+        cardScroll.managedProperty().bind(cardScroll.visibleProperty());
+        VBox bottom = new VBox(6, cardScroll, meters, input);
         bottom.getStyleClass().add("pane-bottom");
         root.setTop(top);
         javafx.scene.layout.StackPane center = new javafx.scene.layout.StackPane(output.node(), options);
@@ -147,10 +163,17 @@ public final class AgentPane {
                 Platform.runLater(AgentPane.this::refresh);
             }
 
+            @Override public void proposalsChanged() {
+                if (juno) Platform.runLater(AgentPane.this::refresh);
+            }
+
             @Override public void conversationChanged(Agent a) {
-                if (a == agent) Platform.runLater(() -> {
+                if (a != agent) return;
+                // The new conversation as it is now; events after this arrive through event() in order.
+                List<AgentEvent> now = runtime.live(agent.id).history();
+                Platform.runLater(() -> {
                     output.clear();
-                    output.addAll(runtime.live(agent.id).history());
+                    output.addAll(now);
                     refresh();
                 });
             }
@@ -232,8 +255,7 @@ public final class AgentPane {
                 && agent.reason == Agent.Reason.FAILED)) || agent.turnOpen);
         stop.setDisable(!agent.turnOpen && agent.heldMessage == null);
         root.setStyle("-fx-border-color: " + agent.colour + ";");
-        // TODO(Milestone 4): linked agents in their colours (design §7.4).
-        contacts.setText("can talk to: Juno");
+        refreshContacts();
 
         long threshold = ctx.settings.system.freshStartThreshold;
         int pct = Meters.percent(l.contextTokens, l.contextWindow);
@@ -250,6 +272,28 @@ public final class AgentPane {
         if (runtime.pendingRestart(agent)) notes.add("model/effort apply from the next message");
         pending.setText(String.join(" · ", notes));
         refreshCards(l);
+    }
+
+    /** "can talk to" with each name in its colour (design §7.4); Juno talks to everyone. */
+    private void refreshContacts() {
+        Label lead = Ui.dim("can talk to:");
+        lead.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
+        contacts.getChildren().setAll(lead);
+        if (juno) {
+            Label all = Ui.dim("everyone");
+            all.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
+            contacts.getChildren().add(all);
+            return;
+        }
+        List<Agent> who = runtime.orchestration().contacts(agent);
+        for (int i = 0; i < who.size(); i++) {
+            Agent x = who.get(i);
+            Label n = new Label(x.name + (i < who.size() - 1 ? "," : ""));
+            n.setStyle("-fx-text-fill: " + x.colour + ";");
+            n.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
+            if (!dev.juno.runtime.Orchestration.isJuno(x)) tip(n, x.profile + " · " + x.statusText());
+            contacts.getChildren().add(n);
+        }
     }
 
     /** One tooltip per label, updated in place. */
@@ -271,12 +315,17 @@ public final class AgentPane {
         List<LiveAgent.PendingPermission> perms = l.pendingPermissions();
         boolean folder = agent.status == Agent.Status.AWAITING && agent.reason == Agent.Reason.FOLDER;
         String permId = perms.isEmpty() ? null : perms.get(0).id;
-        if (java.util.Objects.equals(permId, shownPermission) && folder == folderCardShown) return;
+        List<dev.juno.comms.Proposal> proposals = juno ? runtime.orchestration().proposals() : List.of();
+        String proposalIds = String.join(",", proposals.stream().map(p -> p.id).toList());
+        if (java.util.Objects.equals(permId, shownPermission) && folder == folderCardShown
+                && proposalIds.equals(shownProposals)) return;
         shownPermission = permId;
         folderCardShown = folder;
+        shownProposals = proposalIds;
         cards.getChildren().clear();
         if (permId != null) cards.getChildren().add(permissionCard(perms.get(0)));
         if (folder) cards.getChildren().add(folderCard(l));
+        for (dev.juno.comms.Proposal p : proposals) cards.getChildren().add(new ProposalCard(ctx, p, this::focusInput).node());
     }
 
     /** The four answers and the editable rule (design §7.5). */
@@ -401,10 +450,16 @@ public final class AgentPane {
     private List<Autocomplete.Item> suggestions(String typed) {
         String lower = typed.toLowerCase(Locale.ROOT);
         List<String> names = runtime.agents().stream().map(a -> a.name).toList();
-        for (String c : List.of("hey", "cantalkto", "stoptalkingto")) {
+        List<String> nameCommands = new ArrayList<>(List.of("hey", "cantalkto", "stoptalkingto"));
+        if (juno) nameCommands.addAll(List.of("getcontextfrom", "assign"));
+        else names = names.stream().filter(n -> !n.equals(agent.name)).toList();
+        List<String> withJuno = new ArrayList<>(names);
+        withJuno.add(runtime.juno().name);
+        for (String c : nameCommands) {
             if (lower.startsWith("/" + c) && !lower.matches("/" + c + "\\s*\\S+\\s.*")) {
                 String prefix = typed.substring(0, c.length() + 1);
-                return Autocomplete.after(typed, prefix, names, c.equals("hey") ? " " : "", n -> runtime.byName(n)
+                return Autocomplete.after(typed, prefix, c.equals("hey") ? withJuno : names,
+                        c.equals("hey") || c.equals("assign") ? " " : "", n -> runtime.byName(n)
                         .map(a -> a.profile + " · " + a.statusText()).orElse(""));
             }
         }

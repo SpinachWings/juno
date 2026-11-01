@@ -1,5 +1,128 @@
 # Progress
 
+## Milestone 4: Juno and communication. Done (2026-11-01)
+
+### Done
+- **Juno** is an agent with the fixed id `juno` (`Orchestration.JUNO`, `agents/juno/`), name Juno, the `orchestrator`
+  profile, magenta, no project (private folder). Made on the first start, back with her conversation after a restart.
+  Her pane is an ordinary `AgentPane` (the `JunoPane` placeholder is gone): movable, splittable, maximisable, no ✕; her
+  ⋯ menu has model, effort, rules, conversations and usage only. She can't be deleted or renamed, is never queued and
+  never counts towards the cap. `runtime.agents()` is everyone but Juno; `all()` includes her; `juno()`.
+- **Juno MCP server** (`comms.JunoMcpServer`): every §4.4 tool. Access by the profile's allowed tools
+  (`mcp__juno__<tool>`, or `mcp__juno` / `mcp__juno__*`), disallowed tools win, orchestrator-only tools only for Juno
+  herself; `tools/list` shows a caller only what it may call; parameters are typed (booleans, `lines` integer, optional
+  `lines` / `reason`). Refusals come back as tool errors with the `docs/prompts/results/` text.
+- **Rules** (`runtime.Orchestration`, all under the runtime's lock): links (`comms.Links`, saved with proposals in
+  `~/.juno/comms.json` by `comms.CommsStore`), `send_message` refused without a link (Juno ↔ anyone always), self,
+  unknown names; `list_agents` (Juno: everyone plus links; others: Juno plus linked agents); `set_link` (Juno, same
+  agent, already, no reason; requested → at once; suggested → held); `assign_task` (not to Juno; held when unnamed /
+  "Always" / fresh); `report`; `get_agent_output`; `get_agent_context`; `end_review`.
+- **Links**: `/cantalkto<name>` / `/stoptalkingto<name>`, via Juno, Juno's suggestions held for approval (card
+  "Link a ↔ b? Why: …" with Link / Don't link, inbox, `/approve` / `/deny`). Every change is a line in both panes and
+  Juno's ("🔗 bob ↔ jim linked by you"), a `[Link opened]` / `[Link closed]` notice to both agents, and a `[Link]` note to
+  Juno when you made it. Deleting an agent removes its links and tells the other agent. The preamble's contacts list
+  names who the agent can talk to with profile and status; the pane's "can talk to" line shows them in their colours.
+- **Delegation**: direct (with "Tell Juno about direct tasks" → a `[Note]`), named through Juno, `/assign<name> <task>`
+  (delivered by the app, `[Task from Juno, written by the user]`, Juno gets a note), unnamed with an approval card
+  (`ui.pane.ProposalCard`: Approve / Edit / Choose another / Cancel; fresh: Start fresh / Continue instead / Cancel).
+  Fresh starts always ask; the old conversation stays in the list. Setting **Juno asks before assigning** is the
+  three-way choice of §4.2 (Settings → System).
+- **Reports**: capped at Report length, wrapped with status, task, files changed and context; batched into one digest
+  while Juno works; the review exception (held while `reviewOpen`, sent by `end_review`).
+- **Loop guard** (`comms.LoopGuard`): hop counts carried along chains, refused past the Hop limit with a ⛔ line in both
+  panes and a `[Stopped by Juno]` notice; a message from you to either agent resets it.
+- **Commands**: `/hey` from any pane (also to Juno), `/getcontext`, and in Juno's pane `/getcontextfrom<name>`,
+  `/assign`, `/status`, `/broadcast`; `/approve` / `/deny` in Juno's pane answer a permission request first, then her
+  oldest proposal. Autocomplete suggests names after `/getcontextfrom` and `/assign`. Context summaries are built from
+  the journal (status, context, task, files read / changed, links, last summary, conversation age and turns).
+- **Inbox**: Juno's proposals with their answers, and Juno's own permission requests. The filter list shows Juno's real
+  status (still can't be hidden).
+- **Panes**: tasks, agent messages and reports are shown open ("› Juno → bob: task", "message from jim (tester)");
+  notices fold into one "notices" block; broadcasts show as yours. Cards scroll once they'd take half the pane.
+- **Unit tests** (106 in all, `mvn verify`): `CommsTest` (end to end through the MCP server with `FakeClaude`, a
+  test-only stand-in for Claude Code that speaks stream-json, logs what reached it and can call Juno's tools):
+  Juno herself and after a restart, tool access, links and their announcements, contacts in the system prompt, links
+  after a restart and on deletion, Juno's link rules and suggestions, the loop guard and its reset, an unnamed task
+  approved with an edit and its report, named / fresh / continue-instead, the approval setting, choose another,
+  cancel, a fresh start with nothing to clear, a task waiting for a turn, `/assign` and its note, direct-task notes,
+  capped reports, digests, the review hold, context summaries, output, `/status`, `/broadcast`.
+- **Checked against the real CLI** (Claude Code 2.1.314, haiku / low for Juno and the agents, scratch `JUNO_HOME`,
+  scratch `CLAUDE_CONFIG_DIR`) with `dev.juno.ui.JunoScreens` (test sources; `ui` needs no CLI, `live` runs the four
+  checks): an unnamed task (Juno looked with `list_agents`, chose bob, `assign_task` was held with the card; Approve
+  delivered it, bob called `report`, the report started Juno's turn and she passed the poem on); a fresh start (named,
+  `fresh: true` → card → Start fresh → new conversation, the old one in the list); bob's `send_message` to jim refused
+  ("You are not linked to jim…"), then "Let bob and jim talk to each other" → Juno's `set_link` → linked and announced
+  in all three panes, and the message delivered (jim got the `[Link opened]` notice with it); a counting game between
+  bob and jim with the hop limit at 3 stopped at the fourth message with the refusal text and ⛔ in both panes. `ui` (no
+  CLI) shows the three kinds of card, the inbox, `/status`, `/getcontextfrom` and `/help` in Juno's pane, the
+  can-talk-to line, Juno's options menu and the delegation settings.
+
+### Stubbed
+- `start_review` answers "not available yet" (`results/start_review.md#not-yet`); Milestone 5 sets `Agent.reviewOpen`
+  and makes the snapshot. `end_review` and the report hold already work.
+- Keys, host MCP tools, pipelines, review-comment approvals in the inbox: Milestone 5.
+
+### Decisions (not in the spec)
+1. **What reaches Juno, and how.** Reports start her turn when she's idle (one digest when several arrived while she
+   worked). Notes (direct tasks, `/assign`), approval outcomes and link changes are **notices**: sent along with her
+   next message, never a turn of their own, so `/assign` and approvals cost her nothing. Link announcements and the
+   loop-guard notice reach other agents the same way (`Agent.notices`, saved). In the pane they fold into one
+   "notices" block before the message they came with.
+2. **"Named"** (for "Only when I didn't name the agent") = the agent's name appears as a word in your latest message to
+   Juno (typed or `/hey`; case ignored, spaces between name parts optional). It's checked by the server, not taken
+   from Juno.
+3. **Setting**: `SystemSettings.assignApproval` (UNNAMED / ALWAYS / NEVER) replaces Milestone 1's boolean
+   `junoAsksBeforeAssigning`; an old saved value is ignored (default UNNAMED).
+4. **A fresh start for an agent with no conversation** is treated as not fresh: there's nothing to clear, so nothing
+   to approve (Juno on haiku asked for one in the live check).
+5. **Unnamed and fresh** is one card: Start fresh / Continue instead / Edit / Choose another / Cancel. Choose another
+   keeps `fresh`. `/approve` takes the oldest proposal as proposed. Outcome texts: unnamed → `assign-approved`
+   (`fresh-continue` if you continued instead), another agent → `assign-other`, fresh only → `fresh-approved` /
+   `fresh-continue`, cancel → `assign-cancelled` / `fresh-cancelled`.
+6. **Reports**: `report` stores the text; it's sent when the agent's turn ends, so its status and files changed are
+   final. If an agent never calls `report` for a task, its final reply is used once. A task stays the agent's until a
+   new task, a plain message from you while it's Idle or Done (a direct task; an answer to an agent that's asking
+   keeps it), `/new`, or deletion. No report after `/stop` or a crash (the ⏸ is in the inbox; `/resume` carries on and
+   reports at the end). Files changed = diffs since the task arrived.
+7. **A task for an agent that's working or queued** waits for its turn to end (`Agent.pendingTasks`, saved); Juno's
+   result says "queued, after its current turn".
+8. **Delivery of `send_message`**: into the running turn when the target works (read when its step ends, like `/hey`);
+   otherwise it's the target's next message (may queue, or wait for a folder).
+9. **Loop guard**: each agent carries the hop count of its chain; a message carries the sender's count + 1 and the
+   recipient keeps the larger. Past the limit the message is refused; the first refusal of a pair shows ⛔ in both
+   panes and gives the recipient `[Stopped by Juno]`. A message from you (typed, `/hey`, `/broadcast`, `/assign`, an
+   approved task) sets that agent back to 0, and everyone it was stopped with. Tasks reset the count. Juno's messages
+   count too.
+10. **Link by an approved suggestion** is announced as "by Juno". `/cantalkto` in Juno's pane says she can always
+    talk to everyone.
+11. **New prompt text** (in `docs/prompts/`): `results/list_agents.md`; `get_agent.md` `output` and `context`;
+    `assign_task.md` `why-*`, `place`, `after-turn`; `common.md` `missing`; `start_review.md` `not-yet`.
+12. **Context summary** "last summary" = the last report Juno got from the agent, else the first line of its last
+    reply. `/status` and pane lines are UI text, not prompts.
+13. **Storage** lists Juno last. Shutting down drops output still arriving from dying processes (found by the tests).
+14. **Replaced processes are ignored.** Events from a process that is no longer the agent's current one (after a
+    restart or fresh start) are dropped. Before, the old process's exit cleaned the run folder and unregistered the
+    MCP token of its successor, which then had no Juno tools ("Available MCP tools: none") and hung; seen in the live
+    check after a fresh start, latent since Milestone 2 for any restart. Shutdown also waits up to 3 s for every
+    process it started to end.
+
+### Known issues
+- The "named" check can be fooled ("don't give it to bob" names bob), so a card can be skipped when you meant one.
+- The regression check for decision 14 in `CommsTest` passes with or without the fix (`FakeClaude` doesn't hit the
+  same timing); the fix was confirmed with the real CLI.
+- Notes to Juno wait for her next message: if nothing reaches her, she doesn't see them (by design, decision 1).
+- From earlier milestones: drag-to-swap gesture not driven, Delete dialogs not driven, no bold face in Share Tech
+  Mono, `Notification` hook not exercised.
+
+### For the next milestone (5)
+- `start_review` is in `Orchestration.call` (TODO there). Set `Agent.reviewOpen` when a review starts; `report` and
+  `end_review` already hold and release the report. Waiting ⏳ agents already don't count towards the cap.
+- `AgentRuntime.inject` puts text into an agent's conversation (running turn or next message); `notify` queues a
+  notice for its next message. Pipeline outcomes (`wrappers/pipeline.md`) fit `inject`.
+- Proposals (`comms.Proposal`, `Orchestration.proposals()`) are the model for review-comment approvals; cards are in
+  `ui.pane.ProposalCard`, inbox items in `Inbox.items()`.
+- `FakeClaude` / `FakeProvider` (test sources) run the runtime end to end without Claude Code.
+
 ## Milestone 3: the board. Done (2026-11-01)
 
 ### Done

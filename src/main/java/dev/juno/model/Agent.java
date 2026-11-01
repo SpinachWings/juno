@@ -79,6 +79,43 @@ public class Agent {
     public String branch = "";
     /** Place in the queue (1 = next) while Queued. */
     public int queuePlace;
+    /** The task from Juno (or /assign) the agent is on; its report goes to Juno (design §4.2, §4.3). Null for none. */
+    public Task task;
+    /** What the agent passed to {@code report} this turn; sent to Juno when the turn ends. */
+    public String reportDraft;
+    /** A finished report held while a review is open (design §4.3); sent by {@code end_review}. */
+    public String heldReport;
+    /** Between {@code start_review} and {@code end_review} (Milestone 5). */
+    public boolean reviewOpen;
+    /** The last summary reported to Juno, for the context summary. */
+    public String lastReport = "";
+    /** Notices for the agent (link changes, loop guard, notes to Juno): sent with its next message, never on their own. */
+    public List<String> notices = new ArrayList<>();
+    /** Tasks waiting for the agent's current turn to end. */
+    public List<PendingTask> pendingTasks = new ArrayList<>();
+    /** Hops of the agent-to-agent chain it is in (design §4.4 loop guard); 0 after a message from the user. */
+    public int hop;
+    /** Juno only: reports that arrived while she worked, sent as one digest when she is next idle (design §4.3). */
+    public List<String> pendingReports = new ArrayList<>();
+
+    /** A task from Juno or /assign (design §4.2). */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class Task {
+        public String gist = "";
+        /** Written by the user (/assign) rather than by Juno. */
+        public boolean byUser;
+        public long at;
+        /** A report reached Juno for it (the final reply is used once when the agent never calls report). */
+        public boolean reported;
+    }
+
+    /** A task to deliver once the agent's current turn ends. */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class PendingTask {
+        public String text = "";
+        public boolean fresh;
+        public boolean byUser;
+    }
 
     /** An earlier conversation (design §7.9; the list UI comes in Milestone 3). */
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -112,7 +149,7 @@ public class Agent {
         }
     }
 
-    static String ordinal(int n) {
+    public static String ordinal(int n) {
         int mod100 = n % 100;
         if (mod100 >= 11 && mod100 <= 13) return n + "th";
         return n + switch (n % 10) { case 1 -> "st"; case 2 -> "nd"; case 3 -> "rd"; default -> "th"; };

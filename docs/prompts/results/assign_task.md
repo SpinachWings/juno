@@ -9,3 +9,18 @@ Held for the user's approval ({{why}}). The outcome arrives as a message.
 
 ## not-assignable
 {{to}} is Juno. Do the routing yourself; you can't assign tasks to yourself.
+
+## why-unnamed
+the user didn't name {{to}}
+
+## why-always
+the user approves every assignment
+
+## why-fresh
+a fresh start always needs the user's approval
+
+## place
+{{place}} in line for a free slot
+
+## after-turn
+after its current turn

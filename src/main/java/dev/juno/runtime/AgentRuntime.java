@@ -66,6 +66,9 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
 
         /** The agent's current conversation was replaced (/new, switching to an earlier one): reload its pane. */
         default void conversationChanged(Agent a) {}
+
+        /** A proposal was held for the user's approval, or answered (design §4.1, §4.2). */
+        default void proposalsChanged() {}
     }
 
     public enum Answer { ALLOW_ONCE, ALLOW_AGENT, ALLOW_PROFILE, DENY }
@@ -78,6 +81,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
     private final SkillResolver skillResolver;
     private final AgentStore store;
     private final JunoMcpServer mcp;
+    private final Orchestration orchestration;
     private final Map<String, LiveAgent> live = new ConcurrentHashMap<>();
     private final List<Listener> listeners = new CopyOnWriteArrayList<>();
     private final Map<String, Provider.VersionCheck> versions = new ConcurrentHashMap<>();
@@ -89,6 +93,10 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
     });
     private final List<LiveAgent> queue = new ArrayList<>();
     private volatile AgentEvent.RateLimit rateLimit;
+    /** Set by {@link #shutdown()}: output still arriving from dying processes is dropped. */
+    private volatile boolean closed;
+    /** Every process started, including ones closed since, so shutdown can wait for them all to end. */
+    private final java.util.Set<AgentProcess> started = ConcurrentHashMap.newKeySet();
 
     public AgentRuntime(JunoHome home, Provider provider, Supplier<Settings> settings, Runnable saveSettings,
                         SkillLibrary skills, SkillResolver skillResolver) {
@@ -100,6 +108,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
         this.skillResolver = skillResolver;
         this.store = new AgentStore(home);
         this.mcp = new JunoMcpServer(this);
+        this.orchestration = new Orchestration(this, new dev.juno.comms.CommsStore(home.commsFile()));
         this.hooks = new HookEvents(home.hookEventsDir(), this::hookEvent);
     }
 
@@ -135,17 +144,36 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
             store.save(a);
             refreshBranch(l);
         }
+        if (!live.containsKey(Orchestration.JUNO)) createJuno();
         queue.sort((x, y) -> Long.compare(x.agent.statusSince, y.agent.statusSince));
         mcp.start();
         hooks.start();
         timer.scheduleWithFixedDelay(this::tick, 5, 5, TimeUnit.SECONDS);
         synchronized (this) {
             drainQueue();
+            orchestration.flushReports();
         }
+    }
+
+    /** Juno: the orchestrator, always there (design §3); she has no project, so her folder is a private one. */
+    private void createJuno() {
+        Agent j = new Agent();
+        j.id = Orchestration.JUNO;
+        j.name = "Juno";
+        j.profile = dev.juno.model.BuiltInProfiles.ORCHESTRATOR;
+        j.colour = "#FF4FD8";
+        j.created = 0;
+        j.statusSince = System.currentTimeMillis();
+        j.conversationId = newConversationId();
+        LiveAgent l = new LiveAgent(j);
+        l.journal = new Journal(journalFile(j));
+        live.put(j.id, l);
+        store.save(j);
     }
 
     /** Ends every process; agents in the middle of a turn are interrupted (shown on the next start). */
     public void shutdown() {
+        closed = true;
         for (LiveAgent l : live.values()) {
             if (l.process != null) l.process.kill();
             if (l.agent.turnOpen) {
@@ -159,14 +187,35 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
         hooks.stop();
         mcp.stop();
         timer.shutdownNow();
+        // Let them go, so nothing holds their folders open (Windows) once Juno is gone.
+        long until = System.currentTimeMillis() + 3_000;
+        for (AgentProcess p : started) {
+            if (p.alive()) p.kill();
+            p.awaitExit(until - System.currentTimeMillis());
+        }
     }
 
     public void addListener(Listener l) {
         listeners.add(l);
     }
 
+    /** Every agent but Juno, oldest first. */
     public List<Agent> agents() {
+        return all().stream().filter(a -> !Orchestration.isJuno(a)).toList();
+    }
+
+    /** Juno and every agent. */
+    public List<Agent> all() {
         return live.values().stream().map(l -> l.agent).sorted((x, y) -> Long.compare(x.created, y.created)).toList();
+    }
+
+    /** Juno, the orchestrator (design §3). */
+    public Agent juno() {
+        return live.get(Orchestration.JUNO).agent;
+    }
+
+    public Orchestration orchestration() {
+        return orchestration;
     }
 
     public LiveAgent live(String agentId) {
@@ -175,7 +224,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
 
     public Optional<Agent> byName(String name) {
         String n = normalise(name);
-        return agents().stream().filter(a -> normalise(a.name).equals(n)).findFirst();
+        return all().stream().filter(a -> normalise(a.name).equals(n)).findFirst();
     }
 
     public AgentEvent.RateLimit rateLimit() {
@@ -247,6 +296,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
             store.save(a);
             return;
         }
+        if (from.equals("user")) orchestration.fromUser(a, text, from);
         if (a.pendingSkill != null) {
             text = AgentPrompts.activateSkill(a.pendingSkill, text);
             a.pendingSkill = null;
@@ -260,6 +310,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
     /** Adds to the current task without interrupting it (/hey): read when the current step ends. */
     public synchronized void hey(Agent a, String text) {
         LiveAgent l = live.get(a.id);
+        orchestration.fromUser(a, text, "hey");
         if (!l.running() || !a.turnOpen) {
             send(a, AgentPrompts.hey(text), "hey");
             return;
@@ -272,7 +323,9 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
     /** Agents with an open turn, Waiting ones excluded (design §3); Juno never counts. */
     int workingCount() {
         int n = 0;
-        for (LiveAgent x : live.values()) if (x.agent.turnOpen && x.agent.status != Status.WAITING) n++;
+        for (LiveAgent x : live.values()) {
+            if (x.agent.turnOpen && x.agent.status != Status.WAITING && !Orchestration.isJuno(x.agent)) n++;
+        }
         return n;
     }
 
@@ -288,7 +341,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
             store.save(a);
             return;
         }
-        if (!a.turnOpen && workingCount() >= cap()) {
+        if (!a.turnOpen && !Orchestration.isJuno(a) && workingCount() >= cap()) {
             a.queuedMessage = text;
             a.queuedFrom = from;
             queue.add(l);
@@ -347,8 +400,16 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
             c.firstTask = AgentPrompts.firstLine(text, 200);
             a.conversations.add(c);
         }
+        String sent = text;
+        if (!a.notices.isEmpty() && !from.equals("compact")) {
+            // Notices ride along with the next message (link changes, loop guard, notes to Juno).
+            String notes = String.join("\n\n", a.notices);
+            a.notices.clear();
+            record(l, new AgentEvent.UserText(notes, "notice"));
+            sent = notes + "\n\n" + text;
+        }
         record(l, new AgentEvent.UserText(text, from));
-        l.process.send(provider.userMessage(text));
+        l.process.send(provider.userMessage(sent));
         l.stopRequested = false;
         a.turnOpen = true;
         a.reason = null;
@@ -382,7 +443,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
             Files.createDirectories(run);
             Path sys = run.resolve("system-prompt.md");
             AtomicFiles.writeString(sys, AgentPrompts.systemPrompt(settings.get(), a, p, project(a), folder,
-                    usesWorktree(a) ? a.branch : ""));
+                    usesWorktree(a) ? a.branch : "", orchestration.contactsText(a)));
             l.token = mcp.register(a.id);
             Path mcpFile = run.resolve("mcp.json");
             AtomicFiles.writeString(mcpFile, provider.mcpConfig(mcp.url(), l.token));
@@ -397,8 +458,11 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
             Provider.LaunchSpec spec = new Provider.LaunchSpec(exe, folder, model, effort, p.permissionMode,
                     allowed, p.disallowedTools, p.maxTurns, p.spendLimit, sys, mcpFile, plugins, a.sessionId, a.id);
             hooks.reset(a.id);
-            l.process = AgentProcess.start(provider, spec, home.logsDir(a.id).resolve(a.conversationId + ".log"),
-                    e -> onEvent(l, e));
+            AgentProcess[] self = new AgentProcess[1];
+            l.process = self[0] = AgentProcess.start(provider, spec,
+                    home.logsDir(a.id).resolve(a.conversationId + ".log"), e -> onEvent(l, self[0], e));
+            started.removeIf(x -> !x.alive());
+            started.add(l.process);
             l.launchedModel = model;
             l.launchedEffort = effort;
             l.launchedFolder = folder.toString();
@@ -422,7 +486,14 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
 
     // ---------------------------------------------------------------- events
 
-    private void onEvent(LiveAgent l, AgentEvent e) {
+    /** {@code from} is the process the event came from (null only before it was known). */
+    private void onEvent(LiveAgent l, AgentProcess from, AgentEvent e) {
+        if (closed) return;
+        // A replaced process (restart, fresh start) may still be ending: its exit must not clean up its successor's
+        // run folder and MCP token.
+        synchronized (this) {
+            if (from != null && from != l.process) return;
+        }
         Agent a = l.agent;
         l.lastActivity = System.currentTimeMillis();
         synchronized (this) {
@@ -502,6 +573,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
 
     private void closeTurn(LiveAgent l, AgentEvent.Result r) {
         Agent a = l.agent;
+        boolean stoppedByUser = l.stopRequested;
         a.turnOpen = false;
         if (l.stopRequested) {
             l.stopRequested = false;
@@ -545,6 +617,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
                 deliver(l, text, "juno");
             }
         }
+        orchestration.turnEnded(l, !stoppedByUser);
         drainQueue();
     }
 
@@ -649,6 +722,8 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
         a.sessionId = null;
         a.conversationId = newConversationId();
         a.interrupted = false;
+        a.task = null;
+        a.reportDraft = null;
         loadJournal(l);
         setStatus(l, Status.IDLE, null, "");
         Conversations.applyLimits(home, a, System.currentTimeMillis());
@@ -790,7 +865,6 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
 
     // ---------------------------------------------------------------- folders (design §7.7)
 
-    @Override
     public String requestFolder(String agentId, String reason) {
         LiveAgent l = live.get(agentId);
         if (l == null) return AgentPrompts.result("common", "call-failed", Map.of("reason", "this agent no longer exists"));
@@ -977,6 +1051,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
 
     /** Renames an agent (design §7.10); null if done, else why not. */
     public synchronized String rename(Agent a, String name) {
+        if (Orchestration.isJuno(a)) return "Juno keeps her name.";
         if (name == null || name.isBlank()) return "Give the agent a name.";
         if (normalise(name).equals("juno")) return "Juno is taken.";
         Optional<Agent> other = byName(name);
@@ -1033,7 +1108,9 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
     public synchronized String delete(Agent a, boolean transcripts) {
         LiveAgent l = live.get(a.id);
         if (l == null) return null;
+        if (Orchestration.isJuno(a)) return "Juno can't be deleted.";
         List<Path> theirs = transcripts ? transcriptsOf(a) : List.of();
+        orchestration.deleted(a);
         cancelPermissions(l, "the agent was deleted");
         queue.remove(l);
         if (l.process != null) {
@@ -1090,7 +1167,9 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
     /** Sizes and what can be removed, per agent. Walks folders: call off the UI thread. */
     public List<AgentStorage> storage() {
         List<AgentStorage> out = new ArrayList<>();
-        for (Agent a : agents()) {
+        List<Agent> everyone = new ArrayList<>(agents());
+        everyone.add(juno()); // her conversations take space too; listed last
+        for (Agent a : everyone) {
             Path wt = home.worktree(a.id);
             boolean has = Files.isDirectory(wt);
             long earlier = 0, current = 0;
@@ -1348,6 +1427,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
 
     /** Looks up the agent's current branch off the calling thread and tells listeners if it changed. */
     private void refreshBranch(LiveAgent l) {
+        if (closed) return;
         timer.execute(() -> {
             try {
                 Agent a = l.agent;
@@ -1425,6 +1505,49 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
     /** Shows (and journals) an event Juno made, e.g. /diff output. */
     public void show(Agent a, AgentEvent e) {
         record(live.get(a.id), e);
+    }
+
+    // ---------------------------------------------------------------- Juno MCP server (design §4.4)
+
+    @Override
+    public String refusal(String agentId, String tool) {
+        LiveAgent l = live.get(agentId);
+        if (l == null) return AgentPrompts.result("common", "call-failed", Map.of("reason", "this agent no longer exists"));
+        return orchestration.refusal(l.agent, tool);
+    }
+
+    @Override
+    public JunoMcpServer.Reply call(String agentId, String tool, JsonNode args) {
+        return orchestration.call(agentId, tool, args);
+    }
+
+    @Override
+    public Map<String, ?> promptValues() {
+        return Map.of("report_length", settings.get().system.reportLength);
+    }
+
+    /**
+     * Puts a message into the agent's conversation (design §4.4): into the running turn, read when its current step
+     * ends; otherwise as its next message (which may queue, or wait for a folder).
+     */
+    synchronized void inject(Agent a, String text, String from) {
+        LiveAgent l = live.get(a.id);
+        if (l.running() && a.turnOpen) {
+            l.process.send(provider.userMessage(text));
+            record(l, new AgentEvent.UserText(text, from));
+        } else {
+            send(a, text, from);
+        }
+    }
+
+    /** A notice for the agent, sent with its next message; it never starts a turn by itself. */
+    synchronized void notify(Agent a, String text) {
+        a.notices.add(text);
+        store.save(a);
+    }
+
+    void proposalsChanged() {
+        listeners.forEach(Listener::proposalsChanged);
     }
 
     /** For tests: the MCP server's URL. */

@@ -18,7 +18,7 @@ public final class SystemTab extends ScrollPane {
     private final Label hookMessage = Ui.dim("");
     private final Label claudeResult = new Label();
     private final TextField claudePath = new TextField();
-    private final CheckBox asks = new CheckBox("Juno asks before assigning");
+    private final javafx.scene.control.ComboBox<SystemSettings.AssignApproval> asks = new javafx.scene.control.ComboBox<>();
     private final CheckBox tell = new CheckBox("Tell Juno about direct tasks");
     private final Spinner<Integer> fresh = spinner(1, 100);
     private final Spinner<Integer> report = spinner(100, 20000);
@@ -52,7 +52,15 @@ public final class SystemTab extends ScrollPane {
         box.getChildren().add(claudeResult);
 
         box.getChildren().add(Ui.subheading("Delegation"));
-        box.getChildren().addAll(asks, tell);
+        asks.getItems().setAll(SystemSettings.AssignApproval.values());
+        asks.setConverter(new javafx.util.StringConverter<>() {
+            @Override public String toString(SystemSettings.AssignApproval a) { return a == null ? "" : a.label; }
+            @Override public SystemSettings.AssignApproval fromString(String s) { return null; }
+        });
+        Label asksLabel = new Label("Juno asks before assigning");
+        Ui.withTip(asksLabel, "When Juno picks an agent for a task you gave her, she shows you her choice first. "
+                + "A fresh start always asks, whatever this says.");
+        box.getChildren().addAll(Ui.row(asksLabel, asks), tell);
         GridPane g = new GridPane();
         g.setHgap(10);
         g.setVgap(8);
@@ -110,7 +118,7 @@ public final class SystemTab extends ScrollPane {
     private void load() {
         SystemSettings s = ctx.settings.system;
         claudePath.setText(s.claudePath);
-        asks.setSelected(s.junoAsksBeforeAssigning);
+        asks.setValue(s.assignApproval);
         tell.setSelected(s.tellJunoAboutDirectTasks);
         fresh.getValueFactory().setValue(s.freshStartThreshold);
         report.getValueFactory().setValue(s.reportLength);
@@ -124,7 +132,7 @@ public final class SystemTab extends ScrollPane {
     private void save() {
         SystemSettings s = new SystemSettings();
         s.claudePath = claudePath.getText().trim();
-        s.junoAsksBeforeAssigning = asks.isSelected();
+        s.assignApproval = asks.getValue() == null ? SystemSettings.AssignApproval.UNNAMED : asks.getValue();
         s.tellJunoAboutDirectTasks = tell.isSelected();
         s.freshStartThreshold = fresh.getValue();
         s.reportLength = report.getValue();

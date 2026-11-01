@@ -75,43 +75,47 @@ final class OptionsPanel extends ScrollPane {
         g.setVgap(8);
         int r = 0;
 
-        // Name and colour: at once.
-        TextField name = new TextField(agent.name);
-        Label nameProblem = Ui.label("", "bad");
-        Runnable commitName = () -> {
-            if (name.getText().strip().equals(agent.name)) return;
-            String err = runtime.rename(agent, name.getText());
-            nameProblem.setText(err == null ? "" : err);
-            if (err != null) name.setText(agent.name);
-        };
-        name.setOnAction(e -> commitName.run());
-        name.focusedProperty().addListener((o, a, b) -> { if (!b) commitName.run(); });
-        g.addRow(r++, new Label("Name"), new VBox(2, name, nameProblem));
-        ColorPicker colour = new ColorPicker(Color.web(agent.colour));
-        colour.setOnAction(e -> runtime.setColour(agent, SetupForm.hex(colour.getValue())));
-        g.addRow(r++, new Label("Colour"), colour);
+        // Juno keeps her name, colour and private folder, needs no keys and can't be deleted (design §3).
+        boolean juno = dev.juno.runtime.Orchestration.isJuno(agent);
+        if (!juno) {
+            // Name and colour: at once.
+            TextField name = new TextField(agent.name);
+            Label nameProblem = Ui.label("", "bad");
+            Runnable commitName = () -> {
+                if (name.getText().strip().equals(agent.name)) return;
+                String err = runtime.rename(agent, name.getText());
+                nameProblem.setText(err == null ? "" : err);
+                if (err != null) name.setText(agent.name);
+            };
+            name.setOnAction(e -> commitName.run());
+            name.focusedProperty().addListener((o, a, b) -> { if (!b) commitName.run(); });
+            g.addRow(r++, new Label("Name"), new VBox(2, name, nameProblem));
+            ColorPicker colour = new ColorPicker(Color.web(agent.colour));
+            colour.setOnAction(e -> runtime.setColour(agent, SetupForm.hex(colour.getValue())));
+            g.addRow(r++, new Label("Colour"), colour);
 
-        // Project: waits until the agent isn't working.
-        ComboBox<Project> project = new ComboBox<>();
-        project.getItems().setAll(ctx.settings.projects);
-        project.setConverter(new StringConverter<>() {
-            @Override public String toString(Project p) { return p == null ? "No project" : p.name; }
-            @Override public Project fromString(String s) { return null; }
-        });
-        project.setValue(runtime.project(agent));
-        Label projectNote = Ui.dim("");
-        String pending = runtime.pendingProject(agent);
-        if (pending != null) projectNote.setText("Changes when " + agent.name + " isn't working any more.");
-        else if (runtime.usesWorktree(agent)) projectNote.setText("Works in its own worktree"
-                + (agent.branch.isBlank() ? "" : ", branch " + agent.branch) + ".");
-        Button setProject = Ui.button("Change project", () -> {
-            if (project.getValue() == null) return;
-            String msg = runtime.requestProject(agent, project.getValue().id);
-            projectNote.setText(msg == null ? "Project set." : msg);
-            if (msg == null) rebuildLater();
-        });
-        setProject.disableProperty().bind(project.valueProperty().isNull());
-        g.addRow(r++, new Label("Project"), new VBox(4, Ui.row(project, setProject), projectNote));
+            // Project: waits until the agent isn't working.
+            ComboBox<Project> project = new ComboBox<>();
+            project.getItems().setAll(ctx.settings.projects);
+            project.setConverter(new StringConverter<>() {
+                @Override public String toString(Project p) { return p == null ? "No project" : p.name; }
+                @Override public Project fromString(String s) { return null; }
+            });
+            project.setValue(runtime.project(agent));
+            Label projectNote = Ui.dim("");
+            String pending = runtime.pendingProject(agent);
+            if (pending != null) projectNote.setText("Changes when " + agent.name + " isn't working any more.");
+            else if (runtime.usesWorktree(agent)) projectNote.setText("Works in its own worktree"
+                    + (agent.branch.isBlank() ? "" : ", branch " + agent.branch) + ".");
+            Button setProject = Ui.button("Change project", () -> {
+                if (project.getValue() == null) return;
+                String msg = runtime.requestProject(agent, project.getValue().id);
+                projectNote.setText(msg == null ? "Project set." : msg);
+                if (msg == null) rebuildLater();
+            });
+            setProject.disableProperty().bind(project.valueProperty().isNull());
+            g.addRow(r++, new Label("Project"), new VBox(4, Ui.row(project, setProject), projectNote));
+        }
 
         // Model and effort.
         ComboBox<String> model = new ComboBox<>();
@@ -139,13 +143,15 @@ final class OptionsPanel extends ScrollPane {
         g.add(applies, 1, r++);
 
         // Keys.
-        g.addRow(r++, new Label("GitHub key"), keyPicker(Key.Kind.GITHUB, agent.githubKeyId));
-        g.addRow(r++, new Label("GitLab key"), keyPicker(Key.Kind.GITLAB, agent.gitlabKeyId));
-        Project p = runtime.project(agent);
-        if (p != null && !p.remote.isBlank() && agent.githubKeyId == null && agent.gitlabKeyId == null) {
-            Label warn = Ui.label("⚠ " + p.name + " has a remote but " + agent.name + " has no key: no GitHub/GitLab "
-                    + "access.", "warn");
-            g.add(warn, 1, r++);
+        if (!juno) {
+            g.addRow(r++, new Label("GitHub key"), keyPicker(Key.Kind.GITHUB, agent.githubKeyId));
+            g.addRow(r++, new Label("GitLab key"), keyPicker(Key.Kind.GITLAB, agent.gitlabKeyId));
+            Project p = runtime.project(agent);
+            if (p != null && !p.remote.isBlank() && agent.githubKeyId == null && agent.gitlabKeyId == null) {
+                Label warn = Ui.label("⚠ " + p.name + " has a remote but " + agent.name + " has no key: no GitHub/GitLab "
+                        + "access.", "warn");
+                g.add(warn, 1, r++);
+            }
         }
         box.getChildren().add(g);
 
@@ -177,6 +183,7 @@ final class OptionsPanel extends ScrollPane {
         box.getChildren().add(usage);
         box.getChildren().add(Ui.dim("Dollar figures are API-price estimates."));
 
+        if (juno) return;
         box.getChildren().add(Ui.subheading("Delete"));
         Button delete = Ui.button("Delete " + agent.name + "…", this::delete);
         delete.getStyleClass().add("danger");

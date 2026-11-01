@@ -40,4 +40,6 @@ public final class JunoHome {
     /** Review snapshots per agent (Milestone 5); counted in the storage figures. */
     public Path reviewsDir(String agentId) { return root.resolve("reviews").resolve(agentId); }
     public Path layoutFile() { return root.resolve("layout.json"); }
+    /** Links and proposals held for approval (design §4.1, §4.2). */
+    public Path commsFile() { return root.resolve("comms.json"); }
 }

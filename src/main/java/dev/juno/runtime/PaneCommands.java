@@ -58,9 +58,10 @@ public final class PaneCommands {
         return new Parsed(word, rest);
     }
 
-    /** Commands available in this agent's pane: any-pane ones plus its profile's (design §8). */
+    /** Commands available in this agent's pane: any-pane ones, Juno's in hers, plus its profile's (design §8). */
     public List<CommandRegistry.Command> available(Agent a) {
         List<CommandRegistry.Command> out = new ArrayList<>(CommandRegistry.ofScope(CommandRegistry.Scope.ANY_PANE));
+        if (Orchestration.isJuno(a)) out.addAll(CommandRegistry.ofScope(CommandRegistry.Scope.JUNO_ONLY));
         Profile p = runtime.profile(a.profile);
         if (p != null) {
             for (ProfileCommand c : p.commands) {
@@ -122,8 +123,15 @@ public final class PaneCommands {
                         + String.join(", ", runtime.skillNames(a)), "info");
                 return new Outcome.Said(runtime.activate(a, args), "info");
             }
-            case "approve" -> { return said(runtime.answer(a, null, AgentRuntime.Answer.ALLOW_ONCE, null), null); }
-            case "deny" -> { return said(runtime.answer(a, null, AgentRuntime.Answer.DENY, null), null); }
+            case "approve", "deny" -> {
+                boolean yes = c.name().equals("approve");
+                // A permission request first; in Juno's pane, then her oldest proposal (design §8.1).
+                if (Orchestration.isJuno(a) && runtime.live(a.id).pendingPermissions().isEmpty()) {
+                    Orchestration o = runtime.orchestration();
+                    return said(yes ? o.approveOldest() : o.declineOldest(), null);
+                }
+                return said(runtime.answer(a, null, yes ? AgentRuntime.Answer.ALLOW_ONCE : AgentRuntime.Answer.DENY, null), null);
+            }
             case "help" -> { return new Outcome.Help(available(a)); }
             case "hey" -> {
                 String[] parts = args.split("\\s+", 2);
@@ -135,13 +143,14 @@ public final class PaneCommands {
                 runtime.hey(to, parts[1]);
                 return to == a ? new Outcome.Sent() : new Outcome.Said("Sent to " + to.name + ".", "dim");
             }
-            case "cantalkto", "stoptalkingto", "getcontext" -> {
-                // TODO(Milestone 4): links and context summaries (design §4.1, §8.2).
-                return new Outcome.Said("/" + c.name() + " arrives with agent-to-agent communication (Milestone 4).",
-                        "warn");
+            case "cantalkto", "stoptalkingto" -> {
+                if (args.isBlank()) return new Outcome.Said("Usage: /" + c.name() + "<name>", "warn");
+                return said(runtime.orchestration().linkByUser(a, args, c.name().equals("cantalkto")), null);
             }
+            case "getcontext" -> { return new Outcome.Said(runtime.orchestration().contextSummary(a), "info"); }
             case "getcontextfrom", "assign", "status", "broadcast" -> {
-                return new Outcome.Said("/" + c.name() + " works only in Juno's pane.", "warn");
+                if (!Orchestration.isJuno(a)) return new Outcome.Said("/" + c.name() + " works only in Juno's pane.", "warn");
+                return junoCommand(c.name(), args);
             }
             default -> {
                 if (profile != null) {
@@ -156,6 +165,33 @@ public final class PaneCommands {
                     }
                 }
                 return new Outcome.Said("`/" + c.name() + "` isn't supported in Juno — see /help.", "warn");
+            }
+        }
+    }
+
+    /** Juno's pane only (design §8.2): none of these spend her tokens. */
+    private Outcome junoCommand(String name, String args) {
+        Orchestration o = runtime.orchestration();
+        switch (name) {
+            case "getcontextfrom" -> {
+                Agent other = runtime.byName(args).orElse(null);
+                if (args.isBlank()) return new Outcome.Said("Usage: /getcontextfrom<name>", "warn");
+                if (other == null) return new Outcome.Said("There's no agent called " + args + ".", "warn");
+                return new Outcome.Said(o.contextSummary(other), "info");
+            }
+            case "assign" -> {
+                String[] parts = args.split("\\s+", 2);
+                if (parts[0].isBlank() || parts.length < 2 || parts[1].isBlank()) {
+                    return new Outcome.Said("Usage: /assign<name> <task>", "warn");
+                }
+                return said(o.assign(parts[0], parts[1]), null);
+            }
+            case "status" -> { return new Outcome.Said(o.status(), "info"); }
+            default -> {
+                if (args.isBlank()) return new Outcome.Said("Usage: /broadcast <text>", "warn");
+                int n = o.broadcast(args);
+                return new Outcome.Said(n == 0 ? "There are no agents to message." : "Sent to " + n + " agent"
+                        + (n == 1 ? "" : "s") + ".", n == 0 ? "warn" : "dim");
             }
         }
     }

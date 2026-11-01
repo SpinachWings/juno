@@ -203,8 +203,8 @@ class RuntimeTest {
         Agent a = rt.create("bob", "tester", null, null);
         HttpResponse<String> r = post(registerToken(a.id), "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\"}");
         JsonNode tools = Json.MAPPER.readTree(r.body()).path("result").path("tools");
-        assertEquals(2, tools.size());
-        JsonNode folder = tools.get(1);
+        assertEquals(5, tools.size(), "the every-profile tools and the permission prompt");
+        JsonNode folder = tools.get(3);
         assertEquals("request_folder", folder.path("name").asText());
         assertTrue(folder.path("description").asText().contains("Awaiting decision"));
         assertEquals("reason", folder.path("inputSchema").path("required").get(0).asText());

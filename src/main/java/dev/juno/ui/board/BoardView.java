@@ -40,7 +40,6 @@ public final class BoardView implements PaneHost {
     private final ScrollPane scroll = new ScrollPane(canvas);
     private final Map<String, AgentPane> panes = new HashMap<>();
     private final Map<String, SetupForm> setups = new LinkedHashMap<>();
-    private final JunoPane juno;
     private final List<Runnable> listeners = new ArrayList<>();
     private String maximised;
     private String lastUsed = BoardLayout.JUNO;
@@ -51,7 +50,6 @@ public final class BoardView implements PaneHost {
         this.ctx = ctx;
         this.store = new LayoutStore(ctx.home);
         this.layout = store.load();
-        this.juno = new JunoPane(this, !ctx.runtime.agents().isEmpty());
         scroll.setFitToWidth(true);
         scroll.setFitToHeight(true);
         scroll.setPannable(false);
@@ -64,7 +62,7 @@ public final class BoardView implements PaneHost {
                 toggleMaximise(maximised);
             }
         });
-        wireDrag(BoardLayout.JUNO, juno.topBar(), juno.root());
+        pane(ctx.runtime.juno()); // Juno's pane: always on the board, movable, never hidden (design §3)
         layout.reconcile(ids());
         ctx.runtime.addListener(new AgentRuntime.Listener() {
             @Override public void agentsChanged() {
@@ -290,14 +288,13 @@ public final class BoardView implements PaneHost {
     }
 
     private Node cell(String id) {
-        if (id.equals(BoardLayout.JUNO)) return juno.root();
+        if (id.equals(BoardLayout.JUNO)) return pane(ctx.runtime.juno()).root();
         if (id.startsWith(SETUP)) return setups.get(id).root();
         Agent a = ctx.runtime.agents().stream().filter(x -> x.id.equals(id)).findFirst().orElse(null);
         return a == null ? new Region() : pane(a).root();
     }
 
     private void rebuild() {
-        juno.refresh();
         if (maximised != null && layout.shown(maximised)) {
             Node n = cell(maximised);
             StackPane full = new StackPane();

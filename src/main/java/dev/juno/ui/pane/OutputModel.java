@@ -237,23 +237,37 @@ final class OutputModel {
         UserBlock(String text, String from) {
             this.text = text;
             this.from = from;
+            // Tasks, messages and reports are what the agent works from: shown open.
+            this.expanded = from.equals("task") || from.equals("message") || from.equals("report");
+        }
+
+        /** "bob (coder)" from a {@code [Message from bob (coder)]} block. */
+        private static String messageSender(String text) {
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("^\\[Message from (.+?)]").matcher(text);
+            return m.find() ? m.group(1) : "an agent";
         }
 
         @Override
         void render(StyledDoc d, int depth) {
-            boolean fromUser = from.equals("user") || from.equals("hey");
+            boolean fromUser = from.equals("user") || from.equals("hey") || from.equals("broadcast");
             d.line(ind(depth, "gap-top"));
             if (fromUser) {
-                d.add("› you" + (from.equals("hey") ? " (extra info)" : ""), "who-user").newline();
+                d.add("› you" + (from.equals("hey") ? " (extra info)" : from.equals("broadcast") ? " (to every agent)" : ""),
+                        "who-user").newline();
                 for (String line : text.split("\n", -1)) d.line(ind(depth, "user-line")).add(line, "user-text").newline();
                 return;
             }
             String label = switch (from) {
                 case "recap" -> "resume recap";
                 case "compact" -> "/compact";
+                case "task" -> "task";
+                case "message" -> "message from " + messageSender(text);
+                case "report" -> text.startsWith("[Report") ? "report" : "reports";
+                case "notice" -> "notices";
                 default -> "note from Juno";
             };
-            d.action((expanded ? "▾ " : "▸ ") + "› Juno → " + agentNameSource.get() + ": " + label, () -> {
+            String to = agentNameSource.get().equals("Juno") ? "› " : "› Juno → " + agentNameSource.get() + ": ";
+            d.action((expanded ? "▾ " : "▸ ") + to + label, () -> {
                 expanded = !expanded;
                 toggled(this);
             }, "who-juno", "toggle");

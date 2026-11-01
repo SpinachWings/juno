@@ -36,14 +36,19 @@ public final class AgentPrompts {
 
     /** {@code branch} is the agent's own worktree branch, or blank when it works in the project folder itself. */
     public static String systemPrompt(Settings s, Agent a, Profile profile, Project project, Path folder, String branch) {
+        return systemPrompt(s, a, profile, project, folder, branch, "- Juno (`orchestrator`)");
+    }
+
+    /** {@code contacts}: who the agent can talk to, one per line (design §4.1). */
+    public static String systemPrompt(Settings s, Agent a, Profile profile, Project project, Path folder, String branch,
+                                      String contacts) {
         Map<String, Object> v = profileValues(s, a, project);
         v.put("project", project == null ? "" : project.name);
         v.put("folder", folder.toString());
         v.put("branch", branch);
         // TODO(Milestone 5): the agent's GitHub/GitLab key (design §5.1.1).
         v.put("host_access", "");
-        // TODO(Milestone 4): linked agents with their profile and status (design §4.1).
-        v.put("contacts", "- Juno (`orchestrator`)");
+        v.put("contacts", contacts);
         v.put("report_length", s.system.reportLength);
         return Prompts.render(Prompts.load("preamble.md"), v).trim() + "\n\n"
                 + Prompts.render(profile.systemPrompt, v).trim() + "\n";
@@ -73,7 +78,7 @@ public final class AgentPrompts {
         return Prompts.render(template, v).trim();
     }
 
-    static String result(String file, String key, Map<String, ?> values) {
+    public static String result(String file, String key, Map<String, ?> values) {
         return Prompts.render(Prompts.sections(Prompts.load("results/" + file + ".md")).get(key), values);
     }
 

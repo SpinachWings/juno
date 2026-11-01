@@ -27,8 +27,8 @@ import java.util.regex.Pattern;
  * Juno's MCP server (design §4.4): streamable HTTP on {@code 127.0.0.1}, JSON responses. Each agent process gets its
  * own random bearer token, which is how a call is tied to its agent (an agent can't speak for another).
  *
- * <p>Milestone 2 has only {@code request_permission} (Claude Code's permission prompt tool) and {@code request_folder}.
- * TODO(Milestone 4): the other tools of §4.4 and tool access by the profile's allowed tools.
+ * <p>Every tool of §4.4. The app decides who may call what ({@link Calls#refusal}); {@code tools/list} shows an agent
+ * only the tools it may call, and a call it may not make is refused here, whatever its prompt says.
  */
 public final class JunoMcpServer {
     /** What the server asks the app to do. Calls may block (the user answers in the pane). */
@@ -36,11 +36,37 @@ public final class JunoMcpServer {
         /** Claude Code's permission prompt; returns its decision object ({@code behavior} allow / deny). */
         ObjectNode requestPermission(String agentId, String tool, JsonNode input, String toolUseId);
 
-        /** Returns the text the agent gets back. */
-        String requestFolder(String agentId, String reason);
+        /** Why the agent may not call {@code tool}, or null if it may (design §4.4). */
+        String refusal(String agentId, String tool);
+
+        /** Runs any other tool; returns what the agent gets back. */
+        Reply call(String agentId, String tool, JsonNode args);
+
+        /** Placeholders in tool descriptions (e.g. {@code report_length}). */
+        Map<String, ?> promptValues();
     }
 
-    static final List<String> TOOLS = List.of("request_permission", "request_folder");
+    /** A tool's answer; {@code error} marks refusals. */
+    public record Reply(String text, boolean error) {
+        public static Reply ok(String text) {
+            return new Reply(text, false);
+        }
+
+        public static Reply refused(String text) {
+            return new Reply(text, true);
+        }
+    }
+
+    public static final List<String> TOOLS = List.of("list_agents", "send_message", "report", "request_folder",
+            "assign_task", "get_agent_output", "get_agent_context", "set_link", "start_review", "end_review",
+            "request_permission");
+    /** Tools only Juno may call, whatever a profile allows (design §4.4). */
+    public static final List<String> ORCHESTRATOR_ONLY = List.of("assign_task", "get_agent_output",
+            "get_agent_context", "set_link");
+    /** Parameter types other than string, and parameters that may be left out. */
+    private static final Map<String, String> TYPES = Map.of("fresh", "boolean", "open", "boolean",
+            "requested_by_user", "boolean", "lines", "integer");
+    private static final List<String> OPTIONAL = List.of("get_agent_output.lines", "set_link.reason");
     private static final Pattern PARAM = Pattern.compile("^- `(\\w+)`: (.*)$");
 
     private final Calls calls;
@@ -148,7 +174,7 @@ public final class JunoMcpServer {
             case "tools/list" -> {
                 ObjectNode r = Json.MAPPER.createObjectNode();
                 ArrayNode tools = r.putArray("tools");
-                TOOLS.forEach(t -> tools.add(toolSchema(t)));
+                for (String t : TOOLS) if (calls.refusal(agent, t) == null) tools.add(toolSchema(t, calls.promptValues()));
                 yield result(id, r);
             }
             case "tools/call" -> result(id, call(agent, params.path("name").asText(), params.path("arguments")));
@@ -158,12 +184,15 @@ public final class JunoMcpServer {
 
     private ObjectNode call(String agent, String name, JsonNode args) {
         try {
-            return switch (name) {
-                case "request_permission" -> text(calls.requestPermission(agent, args.path("tool_name").asText(),
-                        args.path("input"), args.path("tool_use_id").asText("")).toString(), false);
-                case "request_folder" -> text(calls.requestFolder(agent, args.path("reason").asText("")), false);
-                default -> text(common("unknown-tool", Map.of("tool", name)), true);
-            };
+            if (!TOOLS.contains(name)) return text(common("unknown-tool", Map.of("tool", name)), true);
+            String refused = calls.refusal(agent, name);
+            if (refused != null) return text(refused, true);
+            if (name.equals("request_permission")) {
+                return text(calls.requestPermission(agent, args.path("tool_name").asText(), args.path("input"),
+                        args.path("tool_use_id").asText("")).toString(), false);
+            }
+            Reply r = calls.call(agent, name, args.isMissingNode() || args.isNull() ? Json.MAPPER.createObjectNode() : args);
+            return text(r.text(), r.error());
         } catch (RuntimeException e) {
             return text(common("call-failed", Map.of("reason", String.valueOf(e.getMessage()))), true);
         }
@@ -183,10 +212,10 @@ public final class JunoMcpServer {
     }
 
     /** A tool's description and parameters, from {@code docs/prompts/tools/<tool>.md}. */
-    static ObjectNode toolSchema(String tool) {
+    static ObjectNode toolSchema(String tool, Map<String, ?> values) {
         ObjectNode t = Json.MAPPER.createObjectNode();
         t.put("name", tool);
-        String file = Prompts.load("tools/" + tool + ".md");
+        String file = Prompts.render(Prompts.load("tools/" + tool + ".md"), values);
         String[] parts = file.split("\n## Parameters\n", 2);
         String description = parts[0].replaceFirst("^# .*\n", "").trim();
         t.put("description", description);
@@ -210,9 +239,9 @@ public final class JunoMcpServer {
         }
         params.forEach((k, v) -> {
             ObjectNode p = props.putObject(k);
-            p.put("type", "string");
+            p.put("type", TYPES.getOrDefault(k, "string"));
             p.put("description", v);
-            required.add(k);
+            if (!OPTIONAL.contains(tool + "." + k)) required.add(k);
         });
         return t;
     }

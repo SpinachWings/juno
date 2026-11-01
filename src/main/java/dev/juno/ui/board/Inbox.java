@@ -22,7 +22,8 @@ import javafx.stage.Popup;
  * The inbox (design §7.2): everything waiting on you, each with the agent, the reason, a one-line summary and its answer
  * buttons or "go to pane", plus a quiet Waiting section. Items come from the agents' state, so they vanish when
  * answered anywhere.
- * TODO(Milestone 4/5): assignment proposals, link suggestions, fresh-start and review-comment approvals, pipelines.
+ * Juno's proposals (assignments, fresh starts, link suggestions) are listed with their answers too.
+ * TODO(Milestone 5): review-comment approvals, pipelines.
  */
 public final class Inbox {
     /** One thing waiting on the user. */
@@ -56,6 +57,7 @@ public final class Inbox {
             @Override public void agentsChanged() { later(); }
             @Override public void conversationChanged(Agent a) { later(); }
             @Override public void event(Agent a, dev.juno.provider.AgentEvent e) { /* permissions arrive as status changes */ }
+            @Override public void proposalsChanged() { later(); }
         });
         refresh();
     }
@@ -67,7 +69,23 @@ public final class Inbox {
     /** The items waiting now (used by tests and the screenshot tools). */
     List<Item> items() {
         List<Item> out = new ArrayList<>();
-        for (Agent a : ctx.runtime.agents()) {
+        Agent juno = ctx.runtime.juno();
+        dev.juno.runtime.Orchestration o = ctx.runtime.orchestration();
+        for (dev.juno.comms.Proposal p : o.proposals()) {
+            if (p.kind == dev.juno.comms.Proposal.Kind.LINK) {
+                Button link = Ui.primary("Link", () -> said(o.approveLink(p.id)));
+                Button no = Ui.button("Don't link", () -> said(o.decline(p.id)));
+                out.add(new Item(juno, "🔗 link", name(p.a) + " ↔ " + name(p.b) + "? Why: " + p.reason, List.of(link, no, go(juno))));
+            } else {
+                Button yes = Ui.primary(p.fresh ? "Start fresh" : "Approve", () -> said(o.approveAssign(p.id, null, null, p.fresh)));
+                Button cancel = Ui.button("Cancel", () -> said(o.decline(p.id)));
+                cancel.getStyleClass().add("danger");
+                String what = p.askAssign ? "→ assign" : "↺ fresh start";
+                out.add(new Item(juno, what, name(p.agentId) + (p.fresh ? " (starts fresh)" : "") + ": "
+                        + oneLine(p.task), List.of(yes, cancel, go(juno))));
+            }
+        }
+        for (Agent a : ctx.runtime.all()) {
             if (a.status != Agent.Status.AWAITING || a.reason == null) continue;
             LiveAgent l = ctx.runtime.live(a.id);
             switch (a.reason) {
@@ -94,6 +112,20 @@ public final class Inbox {
             }
         }
         return out;
+    }
+
+    private String name(String id) {
+        LiveAgent l = ctx.runtime.live(id);
+        return l == null ? "(deleted)" : l.agent.name;
+    }
+
+    private void said(String err) {
+        if (err != null) ctx.runtime.say(ctx.runtime.juno(), err, "warn");
+    }
+
+    private static String oneLine(String s) {
+        String t = s.strip().replace('\n', ' ');
+        return t.length() > 160 ? t.substring(0, 160) + "…" : t;
     }
 
     private static String oneLine(LiveAgent.PendingPermission pp) {

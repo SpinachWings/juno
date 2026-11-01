@@ -14,3 +14,6 @@ Juno has no tool called `{{tool}}`.
 
 ## call-failed
 Juno couldn't handle this call: {{reason}}
+
+## missing
+Give `{{param}}`.
