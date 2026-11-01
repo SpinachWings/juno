@@ -172,6 +172,9 @@ public final class PaneCommands {
     private Outcome diff(Agent a) {
         Path folder = runtime.folder(a);
         if (runtime.project(a) == null) return new Outcome.Said(a.name + " has no project folder.", "info");
+        if (runtime.usesWorktree(a) && !Files.isDirectory(folder)) {
+            return new Outcome.Said(a.name + " has no worktree yet: it is made with its first message.", "info");
+        }
         if (!Files.isDirectory(folder) || !Git.isRepository(folder)) {
             return new Outcome.Said(folder + " isn't a git repository.", "info");
         }

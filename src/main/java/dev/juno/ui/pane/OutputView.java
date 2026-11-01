@@ -35,7 +35,7 @@ public final class OutputView {
     private Runnable onUserScroll = () -> {};
 
     /** {@code folder} gives the agent's current folder, so paths inside it are shown relative to it. */
-    public OutputView(String agentName, java.util.function.Supplier<String> folder) {
+    public OutputView(java.util.function.Supplier<String> agentName, java.util.function.Supplier<String> folder) {
         model = new OutputModel(agentName, folder, this::requestRender);
         // Indentation (sub-agents, block bodies) as a paragraph graphic: wrapped lines stay indented, copies stay clean.
         area.setParagraphGraphicFactory(i -> {

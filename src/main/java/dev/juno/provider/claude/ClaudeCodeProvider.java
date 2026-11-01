@@ -56,6 +56,9 @@ public final class ClaudeCodeProvider implements Provider {
     public HookInstaller hookInstaller() { return hook; }
 
     @Override
+    public Path configFolder() { return hook.claudeDir(); }
+
+    @Override
     public List<String> commandLine(LaunchSpec s) {
         List<String> c = ClaudeVersion.launcher(s.executable());
         c.addAll(List.of("-p", "--input-format", "stream-json", "--output-format", "stream-json", "--verbose",

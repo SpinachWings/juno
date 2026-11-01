@@ -38,6 +38,10 @@ public final class AgentPane {
     private final AgentRuntime runtime;
     private final PaneCommands commands;
     private final Agent agent;
+    private final PaneHost host;
+    private final HBox top;
+    private final OptionsPanel options;
+    private final Button maximise = Ui.button("⤢", this::maximise);
     private final BorderPane root = new BorderPane();
     private final OutputView output;
     private final Label status = new Label();
@@ -45,8 +49,8 @@ public final class AgentPane {
     private final Label name = new Label();
     private final Label where = new Label();
     private final Label modelLabel = new Label();
-    private final Button resume = Ui.button("⟳ Resume", this::resume);
-    private final Button stop = Ui.button("■ Stop", this::stop);
+    private final Button resume = Ui.button("⟳", this::resume);
+    private final Button stop = Ui.button("■", this::stop);
     private final Label contacts = new Label();
     private final Label context = new Label();
     private final Label turnInfo = new Label();
@@ -56,25 +60,44 @@ public final class AgentPane {
     private String shownPermission;
     private boolean folderCardShown;
 
-    public AgentPane(AppContext ctx, Agent agent) {
+    public AgentPane(AppContext ctx, Agent agent, PaneHost host) {
         this.ctx = ctx;
+        this.host = host;
         this.runtime = ctx.runtime;
         this.commands = new PaneCommands(runtime);
         this.agent = agent;
-        this.output = new OutputView(agent.name, () -> ctx.runtime.folder(agent).toString());
+        this.output = new OutputView(() -> agent.name, () -> ctx.runtime.folder(agent).toString());
 
         unread.getStyleClass().add("unread-dot");
         name.getStyleClass().add("pane-name");
         where.getStyleClass().add("dim");
         modelLabel.getStyleClass().add("dim");
         status.getStyleClass().add("status-chip");
-        Button options = Ui.button("⋯", () -> {});
-        options.setDisable(true);
-        // TODO(Milestone 3): maximise, split and the ⋯ options menu (design §7.1, §7.10).
-        Ui.withTip(options, "The options menu arrives with the board (Milestone 3).");
-        HBox top = new HBox(8, status, unread, name, where, Ui.grow(), modelLabel, resume, stop, options);
+        where.setMinWidth(0);
+        modelLabel.setMinWidth(0);
+        name.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
+        status.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
+        Ui.withTip(resume, "Resume: continue after an interruption, with a recap of what was done");
+        Ui.withTip(stop, "Stop the current turn (/stop); the conversation is kept");
+        Button menu = Ui.button("⋯", this::toggleOptions);
+        Ui.withTip(menu, "Options: name, colour, project, model, effort, keys, rules, conversations, delete");
+        Button right = Ui.button("⇥", () -> host.split(agent.id, true));
+        Ui.withTip(right, "Split: a new pane to the right");
+        Button down = Ui.button("⤓", () -> host.split(agent.id, false));
+        Ui.withTip(down, "Split: a new pane below");
+        Button hide = Ui.button("✕", () -> host.hide(agent.id));
+        Ui.withTip(hide, "Hide this pane. " + agent.name + " keeps running; show it again from the agent list.");
+        Ui.withTip(maximise, "Fill the board (double-click the bar; Esc restores)");
+        top = new HBox(6, status, unread, name, where, Ui.grow(), modelLabel, resume, stop, right, down, maximise,
+                hide, menu);
         top.setAlignment(Pos.CENTER_LEFT);
         top.getStyleClass().add("pane-top");
+        top.setOnMouseClicked(e -> {
+            if (e.getClickCount() == 2 && e.getTarget() instanceof javafx.scene.Node n && !isButton(n)) maximise();
+        });
+        this.options = new OptionsPanel(ctx, agent, host, this::toggleOptions);
+        this.options.setVisible(false);
+        this.options.managedProperty().bind(this.options.visibleProperty());
 
         contacts.getStyleClass().add("dim");
         context.getStyleClass().add("meter-text");
@@ -102,7 +125,10 @@ public final class AgentPane {
         VBox bottom = new VBox(6, cards, meters, input);
         bottom.getStyleClass().add("pane-bottom");
         root.setTop(top);
-        root.setCenter(output.node());
+        javafx.scene.layout.StackPane center = new javafx.scene.layout.StackPane(output.node(), options);
+        root.setCenter(center);
+        root.addEventFilter(javafx.scene.input.MouseEvent.MOUSE_PRESSED, e -> host.used(agent.id));
+        root.setMinSize(MIN_WIDTH, MIN_HEIGHT);
         root.setBottom(bottom);
         root.getStyleClass().add("agent-pane");
 
@@ -118,8 +144,13 @@ public final class AgentPane {
             }
 
             @Override public void agentsChanged() {
-                Platform.runLater(() -> {
-                    if (runtime.live(agent.id).history().isEmpty()) output.clear();
+                Platform.runLater(AgentPane.this::refresh);
+            }
+
+            @Override public void conversationChanged(Agent a) {
+                if (a == agent) Platform.runLater(() -> {
+                    output.clear();
+                    output.addAll(runtime.live(agent.id).history());
                     refresh();
                 });
             }
@@ -128,8 +159,41 @@ public final class AgentPane {
         refresh();
     }
 
+    /** Smallest size of a pane: the board scrolls instead of squeezing it further (design §7.1). */
+    public static final double MIN_WIDTH = 460;
+    public static final double MIN_HEIGHT = 380;
+
     public BorderPane root() {
         return root;
+    }
+
+    /** The bar that is dragged to swap panes and double-clicked to maximise. */
+    public HBox topBar() {
+        return top;
+    }
+
+    private static boolean isButton(javafx.scene.Node n) {
+        for (javafx.scene.Node x = n; x != null; x = x.getParent()) if (x instanceof Button) return true;
+        return false;
+    }
+
+    private void maximise() {
+        host.toggleMaximise(agent.id);
+    }
+
+    /** Re-reads the agent's state into the bar (e.g. after the board changed which pane is maximised). */
+    public void refreshNow() {
+        refresh();
+    }
+
+    public void toggleOptions() {
+        boolean show = !options.isVisible();
+        if (show) options.rebuild();
+        options.setVisible(show);
+    }
+
+    public boolean optionsOpen() {
+        return options.isVisible();
     }
 
     public Agent agent() {
@@ -157,7 +221,10 @@ public final class AgentPane {
         tip(status, agent.statusDetail);
         unread.setVisible(agent.unread);
         name.setText(agent.name);
-        where.setText(agent.profile + " · " + (project == null ? "no folder" : project.name));
+        input.setPromptText("Message " + agent.name + " — / for commands");
+        where.setText(agent.profile + " · " + (project == null ? "no folder" : project.name
+                + (agent.branch == null || agent.branch.isBlank() ? "" : " · " + agent.branch)));
+        maximise.setText(host.maximised(agent.id) ? "⤡" : "⤢");
         String model = p == null ? "" : runtime.effectiveModel(agent, p);
         String effort = p == null ? "" : runtime.effectiveEffort(agent, p);
         modelLabel.setText((model.isBlank() ? "default model" : model) + " · " + (effort.isBlank() ? "default effort" : effort));
@@ -269,7 +336,9 @@ public final class AgentPane {
         });
         pick.setPromptText(ctx.settings.projects.isEmpty() ? "No projects yet" : "Choose a project");
         Button set = Ui.primary("Use this project", () -> {
-            if (pick.getValue() != null) runtime.setProject(agent, pick.getValue().id);
+            if (pick.getValue() == null) return;
+            String err = runtime.setProject(agent, pick.getValue().id);
+            if (err != null) runtime.say(agent, err, "warn");
         });
         set.disableProperty().bind(pick.valueProperty().isNull());
         Button create = Ui.button("New project…", () -> {

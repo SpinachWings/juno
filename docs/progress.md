@@ -1,5 +1,111 @@
 # Progress
 
+## Milestone 3: the board. Done (2026-11-01)
+
+### Done
+- **Board** (`ui.board.BoardView`, `BoardCanvas`, `model.BoardLayout`, `store.LayoutStore` → `~/.juno/layout.json`): a tree of
+  splits; every split halves its space, nothing is resizable. ⇥ / ⤓ in a pane's top bar (or **+ New agent**, which splits the
+  pane used last) put a setup form in the new cell (`SetupForm`: name, profile, project, colour, GitHub and GitLab key,
+  or "Show a hidden agent"); Create / Show fill the cell, Cancel removes it, so there is never an empty pane. ✕ hides
+  (the agent keeps running; showing it puts it back next to where it was). Drag a top bar onto another pane to swap.
+  Double-click the bar or ⤢ maximises, ⤡ / Esc restores exactly. Minimum pane size 460 × 380: the board scrolls
+  vertically, and horizontally only when the window is too narrow. Layout saved after every change. Juno's pane
+  (`JunoPane`, a placeholder until Milestone 4) is always there: movable, maximisable, splittable, not hideable.
+- **Top bar** of a pane: status + reason, unread dot, name, profile · project · branch, model · effort, resume ⟳, stop ■,
+  split ⇥ ⤓, maximise, hide, ⋯. (Resume / Stop are icons now: the bar is narrow.)
+- **⋯ options menu** (`ui.pane.OptionsPanel`, covers the pane): name and colour (at once), project (waits while the agent
+  works), model, effort, GitHub and GitLab key, "Allowed for this agent" rules with Remove, Conversations (switch back;
+  greyed out when Claude Code no longer has one), Usage, Delete (confirmation, a warning for a worktree with uncommitted
+  or unpushed work, then asks about Claude Code's transcripts). Model / effort show "applies from the next message".
+- **Filter list** (`FilterList`, toolbar "Agents" toggle): colour, unread dot, name, profile, status + reason, context %,
+  show/hide checkbox, search, status filter incl. Unread. Click a row to show and focus a pane.
+- **Inbox** (`Inbox`, toolbar): count and items derived from agents' state (permission 🔐 with Allow once / Deny, ❓
+  question, 📁 folder, ⚠ failed and ⏸ interrupted with Resume, 🔑), "Go to pane", a quiet Waiting ⏳ section. Items
+  vanish when answered anywhere.
+- **Queued + cap** (`AgentRuntime.deliver`): when "max agents working at once" is reached a message is queued
+  ("Queued · 2nd") and started in order when a slot frees; /stop drops it. Waiting agents don't count. Queued messages
+  survive a restart.
+- **Worktrees** (`git.Worktrees`): agents whose profile edits files and whose project is a git repository get
+  `~/.juno/worktrees/<agent id>` on a new `juno/<name>` branch (numbered if taken) off the project's current branch,
+  made with the first message. Protected-branch hooks: per-worktree `core.hooksPath` → `~/.juno/worktrees/<id>.hooks/`
+  (one script under every client-side hook name; refuses commit, merge, push and any ref update onto the base branches,
+  message from `docs/prompts/results/protected-branch.md`; chains the repository's own hook of the same name).
+  Merging the base branch into your own branch stays allowed. Your checkout and other worktrees are untouched.
+- **Conversations and limits** (`runtime.Conversations`): last 10 earlier conversations, none older than 30 days,
+  applied at start-up and after each conversation ends; Juno's journal and log for dropped ones are deleted. `/new` and
+  switching keep size and last reply in the list.
+- **Storage** (Settings → System): per agent worktree / review snapshots / current conversation / earlier conversations /
+  total, **Remove worktree** (idle, nothing uncommitted or unpushed; comes back on its branch), a ⚠ flag after 14 days
+  untouched, **Clean up old data**.
+- **Agent deletion** (`AgentRuntime.delete`): process, worktree and its hooks, journals, logs, conversations, rules,
+  review folder, hook-event file; the branch stays; Claude Code transcripts only if you say yes.
+- **Unit tests** (87 in all, `mvn verify`): `BoardLayoutTest` (split / hide / show / swap / reconcile / JSON),
+  `BoardCanvasTest` (minimum sizes), `WorktreesTest` (real git: separate worktrees, taken names, branch-in-use, hooks
+  refuse commit / merge / fast-forward / `branch -f` / push to a base branch only in the worktree, the repository's own
+  hook runs and can refuse, removal safety, a removed worktree comes back), `BoardRuntimeTest` (queue and its order,
+  Waiting agents, restart, worktree use, remove, project change, deletion incl. transcripts, limits, switching
+  conversations, rename, rules, keys).
+- **Checked against the real CLI** (Claude Code 2.1.314, haiku / low, scratch `JUNO_HOME`, scratch `CLAUDE_CONFIG_DIR`,
+  scratch repository whose checkout is on `dev` so `main` is free) with `dev.juno.ui.BoardScreens` (test sources;
+  scenarios `layout`, `edit2`, `crash1` + `crash2`): two editing agents in separate worktrees each made a commit on their
+  own branch while the repository checkout stayed clean; with the cap at 1 the second showed "Queued · 1st" and the
+  refusal text; `git switch main` then `git commit` in a worktree printed "Juno: committing to `main` isn't allowed…"
+  and `main` kept one commit; hide / show / swap / maximise; three agents (one in a worktree) cut off by killing the JVM
+  were ⏸ after the restart (the one that had finished stayed Done) and `/resume` finished them. `layout` (no CLI) also
+  shows the setup cells, the options menu, the inbox, a narrow window with scrollbars, Settings → Storage, and that a
+  reopened window has the same layout.
+
+### Stubbed
+- Juno herself in her pane, links, the other MCP tools (Milestone 4). The inbox shows only what an agent's state says;
+  assignment proposals, link suggestions, fresh-start and review-comment approvals, pipelines come with Milestones 4–5.
+- Keys: the agent's GitHub / GitLab key is stored (`githubKeyId`, `gitlabKeyId`) and picked in the setup form and
+  options menu, but not yet used (credential helper, MCP config, git identity, 🔑): Milestone 5.
+- Protected branches from open PRs/MRs: `Worktrees.setProtected` exists; Milestone 5 calls it with the PR/MR base.
+- Review snapshots: counted in Storage if `~/.juno/reviews/<agent>` exists; made in Milestone 5.
+
+### Decisions (not in the spec)
+1. **Worktree folder** is `worktrees/<agent id>` (names can change). A project that is not a git repository is used
+   directly by an editing agent (no worktree, no protection); a repository with no commits fails the start with a clear
+   message.
+2. **Protected branches** = the remote's default (`origin/HEAD`), the branch the worktree was made from (unless it is
+   an agent branch) and `main` / `master` when they exist. The hook also refuses any ref update to them
+   (`reference-transaction`), which catches fast-forward merges and `branch -f`, not only commits and pushes.
+   `extensions.worktreeConfig` is set in the project's git config (needed for a per-worktree `core.hooksPath`).
+3. **Unpushed work** = commits only on the worktree's branch (in no other local branch and no remote branch). Removal
+   and a project change refuse on uncommitted or unpushed work; deleting an agent warns and then removes anyway (the
+   branch stays). A project change for an editing agent removes its old worktree first.
+4. **A removed worktree** comes back on its old branch; if that branch is checked out elsewhere it gets a new one and
+   says so. Branch-in-use while an agent switches: git's own refusal names the place, and the coder prompt already
+   tells the agent to report it.
+5. **Cap counting:** every agent with an open turn counts (including one waiting on a permission answer); Waiting ⏳
+   agents don't; Juno never will. FIFO queue.
+6. **Setting a project** is by id from Settings → Projects; "no project" can't be chosen again once a project is set.
+   The options menu's change while working is runtime-only (lost if Juno restarts first).
+7. **Keys:** two pickers (GitHub, GitLab) because §5.1.1 allows one of each per agent. The "no key" warning appears
+   when the project has a remote and neither is chosen (a project's host can't be told from `owner/repo`).
+8. **Layout for agents created without a setup cell** (e.g. by Juno later): placed by splitting the last pane,
+   alternating right / below. Hidden agents are remembered with their neighbour and side.
+9. **Inbox** is a popup under the toolbar button; the **filter list** is a left panel toggled by "Agents".
+10. **`Provider.configFolder()`** was added (where the CLI keeps transcripts) for the conversations list and deletion.
+11. **Storage columns:** worktree · review snapshots · current conversation (journal + log) · earlier conversations
+    (journals + logs). Stale = no status change or interruption for 14 days.
+
+### Known issues
+- The drag-to-swap gesture itself wasn't driven (no way to synthesise a drag here); the swap it triggers
+  (`BoardView.swap`) was, and the layout logic is unit tested.
+- Narrow panes truncate the meter row ("can talk to…", turn info) with an ellipsis.
+- The Delete dialogs (`Alert.showAndWait`) weren't driven; the deletion they call is unit tested.
+- Bold Markdown has no bold face in Share Tech Mono; the `Notification` hook is not exercised (both from Milestone 2).
+
+### For the next milestone (4)
+- `BoardView` owns the panes; Juno's pane is `ui.board.JunoPane` (a placeholder to replace with the orchestrator
+  agent's `AgentPane`; `BoardLayout.JUNO` is its id). `PaneHost` is what a pane asks of the board.
+- `Inbox.items()` is the one place to add inbox kinds; `FilterList` and `Inbox` re-read agent state on every
+  `AgentRuntime.Listener.changed`.
+- `AgentRuntime.deliver` queues; `startTurn` starts. Juno must stay out of `workingCount()`.
+- `runtime.folder(agent)` is the worktree for editing agents; see `usesWorktree`, `ensureWorktree`, `Agent.branch`.
+- Per-agent keys are on `Agent.githubKeyId` / `gitlabKeyId`.
+
 ## Milestone 2: one agent, end to end. Done (2026-11-01)
 
 ### Done

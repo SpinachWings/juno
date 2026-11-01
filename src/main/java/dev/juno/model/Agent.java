@@ -67,6 +67,18 @@ public class Agent {
     public String interruptReason = "";
     public long interruptedAt;
     public long created;
+    /** GitHub and GitLab keys (Keys tab ids), one of each at most; null for none. Used from Milestone 5. */
+    public String githubKeyId;
+    public String gitlabKeyId;
+    /** A message waiting for a free slot while the agent is Queued (design §3), and who sent it. */
+    public String queuedMessage;
+    public String queuedFrom = "user";
+    /** The branch the agent's worktree was made from (the first protected branch). */
+    public String baseBranch = "";
+    /** The agent's worktree branch (or, without a worktree, the project's current one), as last seen. */
+    public String branch = "";
+    /** Place in the queue (1 = next) while Queued. */
+    public int queuePlace;
 
     /** An earlier conversation (design §7.9; the list UI comes in Milestone 3). */
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -76,6 +88,9 @@ public class Agent {
         public long started;
         public long ended;
         public String firstTask = "";
+        /** Size when the conversation was left, in tokens, and the last reply, for the conversations list. */
+        public long tokens;
+        public String summary = "";
     }
 
     /** "Always allow for this agent" (design §7.5). */
@@ -97,8 +112,15 @@ public class Agent {
         }
     }
 
+    static String ordinal(int n) {
+        int mod100 = n % 100;
+        if (mod100 >= 11 && mod100 <= 13) return n + "th";
+        return n + switch (n % 10) { case 1 -> "st"; case 2 -> "nd"; case 3 -> "rd"; default -> "th"; };
+    }
+
     public String statusText() {
         if (status == Status.AWAITING && reason != null) return reason.icon + " " + status.label;
+        if (status == Status.QUEUED && queuePlace > 0) return status.label + " · " + ordinal(queuePlace);
         return status.label;
     }
 }

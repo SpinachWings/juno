@@ -215,3 +215,21 @@
 .output .text.notice-good { -fx-fill: -juno-good; }
 .output .text.notice-warn { -fx-fill: -juno-warn; }
 .output .text.notice-bad { -fx-fill: -juno-bad; }
+
+/* ===== Board, agent list, inbox, options (Milestone 3) ===== */
+.board { -fx-background-color: -juno-bg; }
+.board-scroll, .board-scroll > .viewport { -fx-background-color: -juno-bg; -fx-background: -juno-bg; }
+.board-maximised { -fx-padding: 3; -fx-background-color: -juno-bg; }
+.drop-target { -fx-border-color: -juno-magenta; -fx-border-width: 3; }
+.juno-pane { -fx-border-color: -juno-magenta; }
+.setup-cell { -fx-background-color: -juno-bg; -fx-border-color: -juno-line; }
+.setup-cell .scroll-pane, .setup-cell .scroll-pane > .viewport { -fx-background-color: -juno-bg; -fx-background: -juno-bg; }
+.options-panel { -fx-background-color: -juno-bg; -fx-background: -juno-bg; }
+.options-panel > .viewport { -fx-background-color: -juno-bg; }
+.agent-row { -fx-padding: 5 6 5 6; -fx-border-color: transparent transparent -juno-line transparent; -fx-cursor: hand; }
+.agent-row:hover { -fx-background-color: -juno-raised; }
+.agent-row-hidden .label { -fx-opacity: 0.7; }
+.side-list { -fx-border-width: 0 1 0 0; }
+.inbox-popup { -fx-background-color: -juno-panel; -fx-border-color: -juno-blue; -fx-border-width: 1; }
+.inbox-item { -fx-padding: 6; -fx-background-color: -juno-raised; -fx-border-color: -juno-line; }
+.button.inbox-busy { -fx-border-color: -juno-warn; -fx-text-fill: -juno-warn; }

@@ -47,6 +47,8 @@ public final class HookInstaller {
         return Path.of(System.getProperty("user.home"), ".claude");
     }
 
+    public Path claudeDir() { return claudeDir; }
+
     public Path settingsFile() { return claudeDir.resolve("settings.json"); }
 
     public Path scriptFile() { return home.hookScriptsDir().resolve(SCRIPT_NAME); }

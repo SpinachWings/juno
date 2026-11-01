@@ -19,7 +19,7 @@ final class OutputModel {
     static final int LONG_OUTPUT = 12;
     static final int NEW_FILE_PREVIEW = 40;
 
-    private final String agentName;
+    private final java.util.function.Supplier<String> agentNameSource;
     private final java.util.function.Supplier<String> folder;
     private final Runnable changed;
     final List<Block> blocks = new ArrayList<>();
@@ -33,8 +33,8 @@ final class OutputModel {
     /** First top-level index changed since the last render, or -1. */
     private int dirtyFrom = -1;
 
-    OutputModel(String agentName, java.util.function.Supplier<String> folder, Runnable changed) {
-        this.agentName = agentName;
+    OutputModel(java.util.function.Supplier<String> agentName, java.util.function.Supplier<String> folder, Runnable changed) {
+        this.agentNameSource = agentName;
         this.folder = folder;
         this.changed = changed;
     }
@@ -67,7 +67,7 @@ final class OutputModel {
                 put(null, new UserBlock(u.text(), u.from()));
             }
             case AgentEvent.Message m -> {
-                MessageBlock b = new MessageBlock(m.text(), m.parent() == null ? agentName : subAgentName(m.parent()));
+                MessageBlock b = new MessageBlock(m.text(), m.parent() == null ? agentNameSource.get() : subAgentName(m.parent()));
                 put(m.parent(), b);
                 if (m.parent() == null && openQuestion != null) {
                     // A newer reply (e.g. after async sub-agents) supersedes the earlier question.
@@ -253,7 +253,7 @@ final class OutputModel {
                 case "compact" -> "/compact";
                 default -> "note from Juno";
             };
-            d.action((expanded ? "▾ " : "▸ ") + "› Juno → " + agentName + ": " + label, () -> {
+            d.action((expanded ? "▾ " : "▸ ") + "› Juno → " + agentNameSource.get() + ": " + label, () -> {
                 expanded = !expanded;
                 toggled(this);
             }, "who-juno", "toggle");
@@ -580,7 +580,7 @@ final class OutputModel {
                 default -> p.input();
             };
             List<String> line = ind(depth, pending ? "perm-pending" : "perm-done", "gap-top");
-            d.line(line).add("🔐 " + agentName + " wants " + p.tool() + ": ", pending ? "perm-title" : "dim");
+            d.line(line).add("🔐 " + agentNameSource.get() + " wants " + p.tool() + ": ", pending ? "perm-title" : "dim");
             d.add(AgentPromptsFirst.line(what), pending ? "plain" : "dim");
             d.newline();
             if (pending) {

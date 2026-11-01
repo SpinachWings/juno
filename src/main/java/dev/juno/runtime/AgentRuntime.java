@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.juno.comms.JunoMcpServer;
 import dev.juno.comms.PermissionRules;
+import dev.juno.git.Git;
+import dev.juno.git.Worktrees;
 import dev.juno.model.Agent;
 import dev.juno.model.Agent.Reason;
 import dev.juno.model.Agent.Status;
@@ -61,6 +63,9 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
 
         /** The agent list changed (created / removed). */
         default void agentsChanged() {}
+
+        /** The agent's current conversation was replaced (/new, switching to an earlier one): reload its pane. */
+        default void conversationChanged(Agent a) {}
     }
 
     public enum Answer { ALLOW_ONCE, ALLOW_AGENT, ALLOW_PROFILE, DENY }
@@ -82,6 +87,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
         t.setDaemon(true);
         return t;
     });
+    private final List<LiveAgent> queue = new ArrayList<>();
     private volatile AgentEvent.RateLimit rateLimit;
 
     public AgentRuntime(JunoHome home, Provider provider, Supplier<Settings> settings, Runnable saveSettings,
@@ -105,13 +111,11 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
             LiveAgent l = new LiveAgent(a);
             live.put(a.id, l);
             if (a.conversationId == null) a.conversationId = newConversationId();
-            l.journal = new Journal(journalFile(a));
-            long lastEvent = 0;
-            for (Journal.Entry e : Journal.read(l.journal.file())) {
-                replay(l, e.event());
-                lastEvent = e.at();
-            }
-            boolean cutOff = a.turnOpen || a.status == Status.WORKING || a.status == Status.QUEUED
+            long lastEvent = loadJournal(l);
+            boolean queued = a.status == Status.QUEUED && a.queuedMessage != null;
+            if (queued) queue.add(l);
+            else if (a.status == Status.QUEUED) a.status = Status.IDLE;
+            boolean cutOff = a.turnOpen || a.status == Status.WORKING
                     || (a.status == Status.AWAITING && a.reason == Reason.PERMISSION);
             if (cutOff) {
                 boolean closed = a.interrupted && a.interruptReason != null && a.interruptReason.startsWith("Juno was closed");
@@ -127,11 +131,17 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
                         + " while " + a.name + " was working. /resume continues with a recap.", "bad");
                 a.unread = true;
             }
+            Conversations.applyLimits(home, a, System.currentTimeMillis());
             store.save(a);
+            refreshBranch(l);
         }
+        queue.sort((x, y) -> Long.compare(x.agent.statusSince, y.agent.statusSince));
         mcp.start();
         hooks.start();
         timer.scheduleWithFixedDelay(this::tick, 5, 5, TimeUnit.SECONDS);
+        synchronized (this) {
+            drainQueue();
+        }
     }
 
     /** Ends every process; agents in the middle of a turn are interrupted (shown on the next start). */
@@ -178,6 +188,11 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
     }
 
     public Agent create(String name, String profile, String projectId, String colour) {
+        return create(name, profile, projectId, colour, null, null);
+    }
+
+    public Agent create(String name, String profile, String projectId, String colour, String githubKeyId,
+                        String gitlabKeyId) {
         if (name == null || name.isBlank()) throw new IllegalArgumentException("Give the agent a name.");
         if (byName(name).isPresent()) throw new IllegalArgumentException("There's already an agent called " + name + ".");
         if (normalise(name).equals("juno")) throw new IllegalArgumentException("Juno is taken.");
@@ -187,6 +202,8 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
         a.name = name.strip();
         a.profile = profile;
         a.projectId = projectId;
+        a.githubKeyId = githubKeyId;
+        a.gitlabKeyId = gitlabKeyId;
         a.colour = colour == null ? "#6FD6FF" : colour;
         a.created = System.currentTimeMillis();
         a.statusSince = a.created;
@@ -206,6 +223,10 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
         LiveAgent l = live.get(a.id);
         if (!l.pendingPermissions().isEmpty()) {
             return a.name + " is waiting for your answer to a permission request: use its buttons, /approve or /deny.";
+        }
+        if (a.status == Status.QUEUED) {
+            return a.name + " is queued (" + a.statusText().substring(a.statusText().indexOf('·') + 2)
+                    + ") behind the agents working now. /stop cancels it.";
         }
         if (a.status == Status.WORKING || a.turnOpen) {
             return a.name + " is working. Use /hey" + normalise(a.name) + " <text> to add to its current task, "
@@ -248,7 +269,75 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
         record(l, new AgentEvent.UserText(wrapped, "hey"));
     }
 
+    /** Agents with an open turn, Waiting ones excluded (design §3); Juno never counts. */
+    int workingCount() {
+        int n = 0;
+        for (LiveAgent x : live.values()) if (x.agent.turnOpen && x.agent.status != Status.WAITING) n++;
+        return n;
+    }
+
+    private int cap() {
+        return Math.max(1, settings.get().system.maxAgentsWorking);
+    }
+
+    /** The one place a message starts a turn: queued while "max agents working at once" is reached (design §3). */
     private void deliver(LiveAgent l, String text, String from) {
+        Agent a = l.agent;
+        if (a.status == Status.QUEUED) {
+            a.queuedMessage = (a.queuedMessage == null ? "" : a.queuedMessage + "\n\n") + text;
+            store.save(a);
+            return;
+        }
+        if (!a.turnOpen && workingCount() >= cap()) {
+            a.queuedMessage = text;
+            a.queuedFrom = from;
+            queue.add(l);
+            setStatus(l, Status.QUEUED, null, "");
+            notice(l, "Queued: " + workingCount() + " agents are working (the limit is " + cap()
+                    + "). It starts when one finishes; /stop cancels it.", "dim");
+            numberQueue();
+            store.save(a);
+            return;
+        }
+        startTurn(l, text, from);
+    }
+
+    private void numberQueue() {
+        for (int i = 0; i < queue.size(); i++) {
+            Agent a = queue.get(i).agent;
+            if (a.queuePlace != i + 1) {
+                a.queuePlace = i + 1;
+                listeners.forEach(x -> x.changed(a));
+            }
+        }
+    }
+
+    /** Starts queued agents if there is room (this also runs every few seconds). */
+    public synchronized void drain() {
+        drainQueue();
+    }
+
+    /** Makes the agent's worktree now (it is otherwise made with the first message). */
+    public synchronized void ensureWorktree(Agent a) throws IOException {
+        if (usesWorktree(a)) prepareWorktree(live.get(a.id));
+    }
+
+    /** Starts queued agents while there is room. */
+    private void drainQueue() {
+        while (!queue.isEmpty() && workingCount() < cap()) {
+            LiveAgent l = queue.remove(0);
+            Agent a = l.agent;
+            String text = a.queuedMessage;
+            String from = a.queuedFrom;
+            a.queuedMessage = null;
+            a.queuePlace = 0;
+            if (a.status == Status.QUEUED) setStatus(l, Status.IDLE, null, "");
+            if (text != null) startTurn(l, text, from);
+        }
+        numberQueue();
+    }
+
+    private void startTurn(LiveAgent l, String text, String from) {
         Agent a = l.agent;
         if (!ensureProcess(l)) return;
         if (a.sessionId == null && a.conversations.stream().noneMatch(c -> c.id.equals(a.conversationId))) {
@@ -287,11 +376,13 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
             return false;
         }
         try {
-            Files.createDirectories(folder);
+            if (usesWorktree(a)) prepareWorktree(l);
+            else Files.createDirectories(folder);
             Path run = home.agentRunDir(a.id);
             Files.createDirectories(run);
             Path sys = run.resolve("system-prompt.md");
-            AtomicFiles.writeString(sys, AgentPrompts.systemPrompt(settings.get(), a, p, project(a), folder));
+            AtomicFiles.writeString(sys, AgentPrompts.systemPrompt(settings.get(), a, p, project(a), folder,
+                    usesWorktree(a) ? a.branch : ""));
             l.token = mcp.register(a.id);
             Path mcpFile = run.resolve("mcp.json");
             AtomicFiles.writeString(mcpFile, provider.mcpConfig(mcp.url(), l.token));
@@ -437,6 +528,14 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
         }
         a.unread = true;
         store.save(a);
+        refreshBranch(l);
+        if (a.conversationId != null) Conversations.applyLimits(home, a, System.currentTimeMillis());
+        if (l.pendingProject != null) {
+            String id = l.pendingProject;
+            l.pendingProject = null;
+            String err = setProject(a, id);
+            if (err != null) notice(l, err, "warn");
+        }
         if (l.restartAfterTurn) {
             l.restartAfterTurn = false;
             stopProcess(l);
@@ -446,6 +545,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
                 deliver(l, text, "juno");
             }
         }
+        drainQueue();
     }
 
     /** The final reply's last paragraph starts with ❓ (docs/progress.md, Milestone 0 decision 1). */
@@ -473,6 +573,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
             setStatus(l, Status.AWAITING, Reason.INTERRUPTED, why);
             a.unread = true;
             store.save(a);
+            drainQueue();
         } else if (!expected && x.code() != 0) {
             record(l, new AgentEvent.Notice("The process ended (exit " + x.code() + ")"
                     + (x.detail().isBlank() ? "." : ": " + AgentPrompts.firstLine(x.detail(), 300)), "warn"));
@@ -495,6 +596,15 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
     /** /stop: interrupts the current turn; the conversation is kept. */
     public synchronized String stop(Agent a) {
         LiveAgent l = live.get(a.id);
+        if (a.status == Status.QUEUED) {
+            queue.remove(l);
+            a.queuedMessage = null;
+            a.queuePlace = 0;
+            setStatus(l, Status.IDLE, null, "");
+            store.save(a);
+            numberQueue();
+            return "Dropped the queued message.";
+        }
         if (a.status == Status.AWAITING && a.reason == Reason.FOLDER && a.heldMessage != null) {
             a.heldMessage = null;
             setStatus(l, Status.IDLE, null, "");
@@ -533,24 +643,74 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
     public synchronized String newConversation(Agent a) {
         LiveAgent l = live.get(a.id);
         if (a.turnOpen) return "Not while " + a.name + " is working.";
+        if (a.status == Status.QUEUED) return a.name + " is queued: /stop first.";
         stopProcess(l);
-        a.conversations.stream().filter(c -> c.id.equals(a.conversationId)).findFirst()
-                .ifPresent(c -> c.ended = System.currentTimeMillis());
-        l.journal.close();
+        closeCurrentConversation(l);
         a.sessionId = null;
         a.conversationId = newConversationId();
         a.interrupted = false;
-        l.journal = new Journal(journalFile(a));
+        loadJournal(l);
+        setStatus(l, Status.IDLE, null, "");
+        Conversations.applyLimits(home, a, System.currentTimeMillis());
+        store.save(a);
+        listeners.forEach(x -> x.conversationChanged(a));
+        return null;
+    }
+
+    /** Notes the current conversation's end in the list; an empty one (never started) just disappears. */
+    private void closeCurrentConversation(LiveAgent l) {
+        Agent a = l.agent;
+        Agent.Conversation c = a.conversations.stream().filter(x -> x.id.equals(a.conversationId)).findFirst().orElse(null);
+        if (c != null) {
+            c.ended = System.currentTimeMillis();
+            c.tokens = l.conversationTokens;
+            c.summary = AgentPrompts.firstLine(l.lastReply == null ? "" : l.lastReply, 200);
+        } else {
+            l.journal.close();
+            Conversations.deleteFiles(home, a.id, a.conversationId);
+        }
+    }
+
+    /** Switches back to an earlier conversation (resumed by id); the current one takes its place in the list. */
+    public synchronized String switchConversation(Agent a, String conversationId) {
+        LiveAgent l = live.get(a.id);
+        if (a.turnOpen) return "Not while " + a.name + " is working.";
+        if (a.status == Status.QUEUED) return a.name + " is queued: /stop first.";
+        Agent.Conversation c = a.conversations.stream().filter(x -> x.id.equals(conversationId)).findFirst().orElse(null);
+        if (c == null || c.id.equals(a.conversationId)) return "That conversation is already the current one.";
+        if (!Conversations.available(provider.configFolder(), c)) {
+            return "Claude Code no longer has that conversation, so it can't be resumed.";
+        }
+        stopProcess(l);
+        closeCurrentConversation(l);
+        a.sessionId = c.sessionId;
+        a.conversationId = c.id;
+        c.ended = 0;
+        a.interrupted = false;
+        loadJournal(l);
+        setStatus(l, Status.IDLE, null, "");
+        Conversations.applyLimits(home, a, System.currentTimeMillis());
+        store.save(a);
+        listeners.forEach(x -> x.conversationChanged(a));
+        return null;
+    }
+
+    /** Opens the current conversation's journal and rebuilds history and meters from it; returns the last event's time. */
+    private long loadJournal(LiveAgent l) {
+        if (l.journal != null) l.journal.close();
+        l.journal = new Journal(journalFile(l.agent));
         synchronized (l.history) {
             l.history.clear();
         }
-        l.contextTokens = l.conversationTokens = l.lastTurnTokens = 0;
+        l.contextTokens = l.conversationTokens = l.lastTurnTokens = l.turnTokens = 0;
         l.conversationCost = l.lastTurnCost = 0;
         l.lastReply = "";
-        setStatus(l, Status.IDLE, null, "");
-        store.save(a);
-        listeners.forEach(x -> x.agentsChanged());
-        return null;
+        long last = 0;
+        for (Journal.Entry e : Journal.read(l.journal.file())) {
+            replay(l, e.event());
+            last = e.at();
+        }
+        return last;
     }
 
     public synchronized String compact(Agent a) {
@@ -645,11 +805,30 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
     }
 
     /** Gives the agent a project: restarts its process in it (conversation kept) and tells it, or sends the held message. */
-    public synchronized void setProject(Agent a, String projectId) {
+    public synchronized String setProject(Agent a, String projectId) {
         LiveAgent l = live.get(a.id);
         Project p = settings.get().projects.stream().filter(x -> x.id.equals(projectId)).findFirst().orElse(null);
-        if (p == null) return;
+        if (p == null) return "That project doesn't exist.";
+        if (p.id.equals(a.projectId)) return null;
+        if (usesWorktree(a) && Files.isDirectory(home.worktree(a.id))) {
+            // The agent has one worktree, of its old project: it goes (its branch stays) if no work is lost with it.
+            String unsafe = Worktrees.unsafeToRemove(home.worktree(a.id));
+            if (unsafe != null) {
+                return a.name + "'s worktree of " + project(a).name + " still has " + unsafe + ". Commit and push it "
+                        + "first (or ask " + a.name + " to).";
+            }
+            stopProcess(l);
+            try {
+                Worktrees.remove(Path.of(project(a).folder), home.worktree(a.id));
+            } catch (IOException e) {
+                return "Couldn't remove " + a.name + "'s old worktree: " + e.getMessage();
+            }
+            a.branch = "";
+            a.baseBranch = "";
+        }
         a.projectId = p.id;
+        if (!usesWorktree(a)) a.branch = "";
+        refreshBranch(l);
         l.folderReason = null;
         notice(l, "📁 Project set: " + p.name + ".", "good");
         String text;
@@ -657,7 +836,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
             text = a.heldMessage;
             a.heldMessage = null;
         } else {
-            text = a.sessionId != null ? AgentPrompts.folderSet(p, folder(a)) : null;
+            text = a.sessionId != null ? AgentPrompts.folderSet(p, folder(a), usesWorktree(a) ? a.branch : "") : null;
         }
         if (a.status == Status.AWAITING && a.reason == Reason.FOLDER) setStatus(l, Status.IDLE, null, "");
         store.save(a);
@@ -668,6 +847,21 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
             stopProcess(l);
             if (text != null) send(a, text, a.sessionId == null ? "user" : "juno");
         }
+        return null;
+    }
+
+    /** The options menu's project change: waits until the agent isn't working (design §7.10). */
+    public synchronized String requestProject(Agent a, String projectId) {
+        LiveAgent l = live.get(a.id);
+        if (a.turnOpen || a.status == Status.QUEUED) {
+            l.pendingProject = projectId;
+            return "The project changes when " + a.name + " isn't working any more.";
+        }
+        return setProject(a, projectId);
+    }
+
+    public synchronized String pendingProject(Agent a) {
+        return live.get(a.id).pendingProject;
     }
 
     // ---------------------------------------------------------------- permissions (design §7.5)
@@ -779,6 +973,190 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
         return o;
     }
 
+    // ---------------------------------------------------------------- options menu, deletion, storage
+
+    /** Renames an agent (design §7.10); null if done, else why not. */
+    public synchronized String rename(Agent a, String name) {
+        if (name == null || name.isBlank()) return "Give the agent a name.";
+        if (normalise(name).equals("juno")) return "Juno is taken.";
+        Optional<Agent> other = byName(name);
+        if (other.isPresent() && other.get() != a) return "There's already an agent called " + name.strip() + ".";
+        a.name = name.strip();
+        saved(a);
+        return null;
+    }
+
+    public synchronized void setColour(Agent a, String colour) {
+        a.colour = colour;
+        saved(a);
+    }
+
+    /** The GitHub/GitLab key; used from the agent's next start (Milestone 5 wires it in). */
+    public synchronized void setKey(Agent a, dev.juno.model.Key.Kind kind, String keyId) {
+        String id = keyId == null || keyId.isBlank() ? null : keyId;
+        if (kind == dev.juno.model.Key.Kind.GITHUB) a.githubKeyId = id;
+        else a.gitlabKeyId = id;
+        saved(a);
+    }
+
+    public synchronized void removeRule(Agent a, Agent.AgentRule rule) {
+        a.rules.remove(rule);
+        saved(a);
+    }
+
+    /** What deleting the agent would lose: its worktree's uncommitted or unpushed work, if any (design §7.9). */
+    public String deleteWarning(Agent a) {
+        Path wt = home.worktree(a.id);
+        if (!Files.isDirectory(wt)) return null;
+        String unsafe = Worktrees.unsafeToRemove(wt);
+        return unsafe == null ? null : a.name + "'s worktree still has " + unsafe + ". Deleting the agent removes the "
+                + "worktree (its branch " + (a.branch.isBlank() ? "" : a.branch + " ") + "is kept, but uncommitted "
+                + "changes are lost).";
+    }
+
+    /** Claude Code transcripts of all the agent's conversations, which deletion may remove too. */
+    public List<Path> transcriptsOf(Agent a) {
+        List<Path> out = new ArrayList<>();
+        List<String> sessions = new ArrayList<>();
+        if (a.sessionId != null) sessions.add(a.sessionId);
+        for (Agent.Conversation c : a.conversations) {
+            if (c.sessionId != null && !sessions.contains(c.sessionId)) sessions.add(c.sessionId);
+        }
+        for (String sid : sessions) out.addAll(Conversations.transcripts(provider.configFolder(), sid));
+        return out;
+    }
+
+    /**
+     * Deletes the agent and everything Juno made for it: process, worktree (its branch stays), hooks, journals, logs,
+     * conversation list, per-agent rules. Claude Code's transcripts only if {@code transcripts}.
+     */
+    public synchronized String delete(Agent a, boolean transcripts) {
+        LiveAgent l = live.get(a.id);
+        if (l == null) return null;
+        List<Path> theirs = transcripts ? transcriptsOf(a) : List.of();
+        cancelPermissions(l, "the agent was deleted");
+        queue.remove(l);
+        if (l.process != null) {
+            AgentProcess p = l.process;
+            l.process = null;
+            p.kill();
+        }
+        cleanRun(l);
+        Path wt = home.worktree(a.id);
+        Project project = project(a);
+        String problem = null;
+        try {
+            if (Files.isDirectory(wt) && project != null) Worktrees.remove(Path.of(project.folder), wt);
+            else if (Files.isDirectory(wt)) deleteTree(wt);
+            if (Files.isDirectory(home.worktreeHooks(a.id))) deleteTree(home.worktreeHooks(a.id));
+            if (Files.isDirectory(home.reviewsDir(a.id))) deleteTree(home.reviewsDir(a.id));
+            l.journal.close();
+            if (Files.isDirectory(home.agentDir(a.id))) deleteTree(home.agentDir(a.id));
+            Files.deleteIfExists(home.hookEventsDir().resolve(a.id + ".jsonl"));
+            for (Path t : theirs) {
+                if (Files.isDirectory(t)) deleteTree(t);
+                else Files.deleteIfExists(t);
+            }
+        } catch (IOException e) {
+            problem = "Deleted " + a.name + ", but couldn't remove everything: " + e.getMessage();
+        }
+        live.remove(a.id);
+        numberQueue();
+        listeners.forEach(Listener::agentsChanged);
+        drainQueue();
+        return problem;
+    }
+
+    private static void deleteTree(Path dir) throws IOException {
+        try (var walk = Files.walk(dir)) {
+            for (Path p : walk.sorted(java.util.Comparator.reverseOrder()).toList()) {
+                p.toFile().setWritable(true);
+                Files.deleteIfExists(p);
+            }
+        }
+    }
+
+    /** Space used by one agent (design §5.2 Storage). */
+    public record AgentStorage(Agent agent, boolean hasWorktree, long worktree, long snapshots, long current,
+                               long earlier, boolean canRemove, String why, boolean stale) {
+        public long total() {
+            return worktree + snapshots + current + earlier;
+        }
+    }
+
+    /** Worktrees untouched this long are flagged (design §5.2). */
+    public static final long STALE_MS = 14L * 86_400_000L;
+
+    /** Sizes and what can be removed, per agent. Walks folders: call off the UI thread. */
+    public List<AgentStorage> storage() {
+        List<AgentStorage> out = new ArrayList<>();
+        for (Agent a : agents()) {
+            Path wt = home.worktree(a.id);
+            boolean has = Files.isDirectory(wt);
+            long earlier = 0, current = 0;
+            for (Agent.Conversation c : List.copyOf(a.conversations)) {
+                long sz = Conversations.size(home, a.id, c.id);
+                if (c.id.equals(a.conversationId)) current += sz;
+                else earlier += sz;
+            }
+            if (a.conversationId != null && a.conversations.stream().noneMatch(c -> c.id.equals(a.conversationId))) {
+                current += Conversations.size(home, a.id, a.conversationId);
+            }
+            String why = has ? removalBlock(a) : null;
+            boolean stale = has && System.currentTimeMillis() - lastTouched(a) > STALE_MS;
+            out.add(new AgentStorage(a, has, has ? Worktrees.size(wt) : 0, Worktrees.size(home.reviewsDir(a.id)),
+                    current, earlier, has && why == null, why, stale));
+        }
+        return out;
+    }
+
+    private static long lastTouched(Agent a) {
+        return Math.max(a.statusSince, Math.max(a.interruptedAt, a.created));
+    }
+
+    /** Why the worktree can't be removed now, or null if it can: idle only, and nothing uncommitted or unpushed. */
+    private String removalBlock(Agent a) {
+        if (a.turnOpen || a.status == Status.WORKING || a.status == Status.QUEUED || a.status == Status.WAITING
+                || (a.status == Status.AWAITING && a.reason != Reason.QUESTION && a.reason != Reason.FAILED
+                && a.reason != Reason.INTERRUPTED)) {
+            return a.statusText().toLowerCase(Locale.ROOT) + ", not idle";
+        }
+        return Worktrees.unsafeToRemove(home.worktree(a.id));
+    }
+
+    /** Remove worktree (design §5.2): idle agents with nothing uncommitted or unpushed; recreated on the next start. */
+    public synchronized String removeWorktree(Agent a) {
+        LiveAgent l = live.get(a.id);
+        Path wt = home.worktree(a.id);
+        if (!Files.isDirectory(wt)) return a.name + " has no worktree.";
+        String why = removalBlock(a);
+        if (why != null) return "Can't remove " + a.name + "'s worktree: " + why + ".";
+        Project project = project(a);
+        if (project == null) return "Can't remove " + a.name + "'s worktree: its project is gone.";
+        String branch = Worktrees.currentBranch(wt);
+        if (!branch.isEmpty()) a.branch = branch;
+        stopProcess(l);
+        try {
+            Worktrees.remove(Path.of(project.folder), wt);
+        } catch (IOException e) {
+            return "Couldn't remove the worktree: " + e.getMessage();
+        }
+        notice(l, "Worktree removed to save space; it comes back on " + (a.branch.isBlank() ? "a new branch" : a.branch)
+                + " with the next message.", "dim");
+        store.save(a);
+        return null;
+    }
+
+    /** Clean up old data (design §5.2): applies the §7.9 limits to every agent now; returns how many were dropped. */
+    public synchronized int cleanUp() {
+        int n = 0;
+        for (LiveAgent l : live.values()) {
+            n += Conversations.applyLimits(home, l.agent, System.currentTimeMillis()).size();
+            store.save(l.agent);
+        }
+        return n;
+    }
+
     // ---------------------------------------------------------------- hook, timers
 
     /** Claude hook events (when installed): {@code Stop} confirms a turn ended; output events stay primary. */
@@ -807,6 +1185,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
             long now = System.currentTimeMillis();
             long idleLimit = Math.max(1, settings.get().system.idleTimeoutMinutes) * 60_000L;
             synchronized (this) {
+                drainQueue();
                 for (LiveAgent l : live.values()) {
                     Agent a = l.agent;
                     if (a.status == Status.DONE && now - a.statusSince > DONE_TO_IDLE_MS) {
@@ -919,12 +1298,71 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
     }
 
     /**
-     * The agent's working folder: the project folder, or a private empty folder (design §7.7).
-     * TODO(Milestone 3): agents whose profile edits files get their own worktree (design §7.8).
+     * The agent's working folder (design §7.7, §7.8): its own worktree if its profile edits files and the project is a
+     * git repository, else the project folder, else a private empty folder. The worktree is made on first start.
      */
     public Path folder(Agent a) {
         Project p = project(a);
-        return p == null ? home.agentHome(a.id) : Path.of(p.folder);
+        if (p == null) return home.agentHome(a.id);
+        return usesWorktree(a) ? home.worktree(a.id) : Path.of(p.folder);
+    }
+
+    /** Whether the agent works in a worktree of its own: it edits files and its project is a git repository. */
+    public boolean usesWorktree(Agent a) {
+        Profile p = profile(a.profile);
+        Project project = project(a);
+        return p != null && p.editsFiles && project != null && Git.isRepository(Path.of(project.folder));
+    }
+
+    /** Creates the worktree if it isn't there (back on its branch if it had one), and (re)installs the guard hooks. */
+    private void prepareWorktree(LiveAgent l) throws IOException {
+        Agent a = l.agent;
+        Path repo = Path.of(project(a).folder);
+        Path wt = home.worktree(a.id);
+        if (!Files.isDirectory(wt)) {
+            Worktrees.Created c = null;
+            if (a.branch != null && !a.branch.isBlank() && Worktrees.branchExists(repo, a.branch)) {
+                Optional<Path> elsewhere = Worktrees.checkedOutAt(repo, a.branch);
+                if (elsewhere.isEmpty()) {
+                    c = Worktrees.attach(repo, wt, a.branch);
+                } else {
+                    notice(l, "Its branch " + a.branch + " is checked out at " + elsewhere.get()
+                            + ", so the worktree starts on a new branch.", "warn");
+                }
+            }
+            if (c == null) {
+                c = Worktrees.create(repo, wt, Worktrees.branchFor(a.name));
+                a.baseBranch = c.start();
+                notice(l, "Worktree " + wt + " on the new branch " + c.branch() + ", from " + c.start() + ".", "dim");
+            }
+            a.branch = c.branch();
+            store.save(a);
+        }
+        Worktrees.installHooks(repo, wt, home.worktreeHooks(a.id), Worktrees.baseBranches(repo, a.baseBranch));
+        String branch = Worktrees.currentBranch(wt);
+        if (!branch.isEmpty() && !branch.equals(a.branch)) {
+            a.branch = branch;
+            store.save(a);
+        }
+    }
+
+    /** Looks up the agent's current branch off the calling thread and tells listeners if it changed. */
+    private void refreshBranch(LiveAgent l) {
+        timer.execute(() -> {
+            try {
+                Agent a = l.agent;
+                Path f = folder(a);
+                if (project(a) == null || !Files.isDirectory(f) || !Git.isRepository(f)) return;
+                String b = Worktrees.currentBranch(f);
+                if (!b.isEmpty() && !b.equals(a.branch)) {
+                    a.branch = b;
+                    store.save(a);
+                    listeners.forEach(x -> x.changed(a));
+                }
+            } catch (RuntimeException e) {
+                // a pane label; never worth failing for
+            }
+        });
     }
 
     public String effectiveModel(Agent a, Profile p) {

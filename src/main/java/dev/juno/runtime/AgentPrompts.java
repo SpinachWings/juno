@@ -31,11 +31,15 @@ public final class AgentPrompts {
 
     /** Preamble + profile system prompt. */
     public static String systemPrompt(Settings s, Agent a, Profile profile, Project project, Path folder) {
+        return systemPrompt(s, a, profile, project, folder, "");
+    }
+
+    /** {@code branch} is the agent's own worktree branch, or blank when it works in the project folder itself. */
+    public static String systemPrompt(Settings s, Agent a, Profile profile, Project project, Path folder, String branch) {
         Map<String, Object> v = profileValues(s, a, project);
         v.put("project", project == null ? "" : project.name);
         v.put("folder", folder.toString());
-        // TODO(Milestone 3): the agent's own worktree branch (design §7.8).
-        v.put("branch", "");
+        v.put("branch", branch);
         // TODO(Milestone 5): the agent's GitHub/GitLab key (design §5.1.1).
         v.put("host_access", "");
         // TODO(Milestone 4): linked agents with their profile and status (design §4.1).
@@ -55,8 +59,12 @@ public final class AgentPrompts {
     }
 
     public static String folderSet(Project p, Path folder) {
+        return folderSet(p, folder, "");
+    }
+
+    public static String folderSet(Project p, Path folder, String branch) {
         return Prompts.render(Prompts.load("wrappers/folder-set.md"),
-                Map.of("project", p.name, "folder", folder.toString(), "branch", "")).trim();
+                Map.of("project", p.name, "folder", folder.toString(), "branch", branch)).trim();
     }
 
     public static String profileCommand(Settings s, Agent a, Project project, String template, String args) {

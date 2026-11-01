@@ -24,6 +24,8 @@ public final class LiveAgent {
     long lastActivity = System.currentTimeMillis();
     long backgroundDoneAt;
     String folderReason;
+    /** A project change asked for while the agent was working; applied when its turn ends (design §7.10). */
+    String pendingProject;
     /** Text to send once the process is back after a project change. */
     String afterRestart;
     final Map<String, PendingPermission> permissions = new LinkedHashMap<>();

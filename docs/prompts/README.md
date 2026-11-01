@@ -9,6 +9,7 @@ All natural-language text Juno sends to agents (design §11). Shown read-only in
 | `preamble.md` | Agent preamble, before every system prompt. |
 | `tools/<tool>.md` | Juno MCP tool description (text under the title) and parameter descriptions (`## Parameters`). |
 | `results/<tool>.md` | Tool results and refusals; one `## <key>` section per message. `common.md` holds shared ones. |
+| `results/protected-branch.md` | What a git hook in a coder's worktree prints when it refuses a commit, merge or push onto a base branch (`@@BRANCH@@` is filled in by the hook). |
 | `wrappers/<name>.md` | What Juno injects into conversations. Files with `## <key>` sections hold several variants. |
 | `resume-recap.md` | Sent on Resume after an interruption or crash. |
 

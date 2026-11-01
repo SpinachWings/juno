@@ -21,7 +21,7 @@ public final class OutputPreview {
         CountDownLatch done = new CountDownLatch(1);
         Stage[] st = new Stage[1];
         Platform.runLater(() -> {
-            OutputView v = new OutputView("bob", () -> "C:/work/repo");
+            OutputView v = new OutputView(() -> "bob", () -> "C:/work/repo");
             Map<String, String> todos = new LinkedHashMap<>();
             todos.put("Read the code", "completed");
             todos.put("Fix the bug", "in_progress");

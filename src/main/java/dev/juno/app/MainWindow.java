@@ -4,13 +4,12 @@ import dev.juno.model.Agent;
 import dev.juno.provider.AgentEvent;
 import dev.juno.runtime.AgentRuntime;
 import dev.juno.ui.Ui;
+import dev.juno.ui.board.BoardView;
+import dev.juno.ui.board.FilterList;
+import dev.juno.ui.board.Inbox;
 import dev.juno.ui.pane.AgentPane;
-import dev.juno.ui.pane.SetupForm;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import javafx.application.Platform;
-import javafx.scene.control.ComboBox;
 import dev.juno.ui.settings.SettingsWindow;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -20,50 +19,47 @@ import javafx.scene.control.ToggleButton;
 import javafx.scene.control.ToggleGroup;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
-import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 
-/** The main window: toolbar, board / notes toggle and, until the board arrives (Milestone 3), one agent pane. */
+/** The main window: toolbar, the board with its agent list, and the board / notes toggle. */
 public final class MainWindow {
     private final AppContext ctx;
     private final BorderPane root = new BorderPane();
     private final VBox banners = new VBox();
     private final Stage stage;
-    private final StackPane boardArea = new StackPane();
-    private final ComboBox<Agent> switcher = new ComboBox<>();
     private final Label usage = new Label("usage —");
-    private final Map<String, AgentPane> panes = new HashMap<>();
-    private AgentPane current;
-    private boolean updatingSwitcher;
+    private final BoardView board;
+    private final FilterList filter;
+    private final Inbox inbox;
 
     public MainWindow(AppContext ctx, Stage stage) {
         this.ctx = ctx;
         this.stage = stage;
+        this.board = new BoardView(ctx);
+        this.filter = new FilterList(ctx, board);
+        this.inbox = new Inbox(ctx, board);
 
         Label logo = new Label("JUNO");
         logo.getStyleClass().add("logo");
 
-        // TODO(Milestone 3): "+ New agent" splits the pane last used, with the in-cell setup form (design §7.1).
-        Button add = Ui.button("+ New agent", this::showSetup);
-        // TODO(Milestone 3): the board and filter list replace this one-pane switcher.
-        switcher.setPromptText("agents");
-        switcher.setConverter(new javafx.util.StringConverter<>() {
-            @Override public String toString(Agent a) { return a == null ? "" : (a.unread ? "● " : "") + a.name + " · " + a.statusText(); }
-            @Override public Agent fromString(String s) { return null; }
-        });
-        switcher.valueProperty().addListener((o, a, b) -> { if (b != null && !updatingSwitcher) showAgent(b); });
+        Button add = Ui.button("+ New agent", board::addAgent);
+        Ui.withTip(add, "Splits the pane you used last and asks for the new agent's setup in the new cell.");
 
         ToggleGroup view = new ToggleGroup();
-        ToggleButton board = new ToggleButton("Board");
+        ToggleButton boardToggle = new ToggleButton("Board");
         // TODO(Milestone 6): the notepad.
         ToggleButton notes = new ToggleButton("Notes");
-        board.setToggleGroup(view);
+        boardToggle.setToggleGroup(view);
         notes.setToggleGroup(view);
-        board.setSelected(true);
+        boardToggle.setSelected(true);
         notes.setDisable(true);
         Ui.withTip(notes, "The notepad arrives in Milestone 6.");
         view.selectedToggleProperty().addListener((o, a, b) -> { if (b == null) a.setSelected(true); });
+
+        ToggleButton agentsToggle = new ToggleButton("Agents");
+        agentsToggle.setSelected(true);
+        Ui.withTip(agentsToggle, "The list of all agents: search, filter, show or hide their panes.");
 
         usage.getStyleClass().add("meter");
         usage.setTooltip(new javafx.scene.control.Tooltip("Your Claude plan's limits, from Claude Code's rate-limit "
@@ -71,10 +67,14 @@ public final class MainWindow {
 
         Button settings = Ui.button("Settings", () -> SettingsWindow.show(ctx, stage, SettingsWindow.Page.KEYS));
 
-        HBox bar = new HBox(10, logo, add, switcher, board, notes, Ui.grow(), usage, settings);
+        HBox bar = new HBox(10, logo, add, boardToggle, notes, agentsToggle, Ui.grow(), inbox.button(), usage, settings);
         bar.setAlignment(Pos.CENTER_LEFT);
         bar.getStyleClass().add("toolbar-bar");
 
+        BorderPane boardArea = new BorderPane(board.root());
+        boardArea.setLeft(filter.root());
+        filter.root().visibleProperty().bind(agentsToggle.selectedProperty());
+        filter.root().managedProperty().bind(agentsToggle.selectedProperty());
         boardArea.getStyleClass().add("board-placeholder");
         VBox top = new VBox(bar, banners);
         root.setTop(top);
@@ -82,47 +82,25 @@ public final class MainWindow {
         ctx.onSaved(this::checkClaude);
         ctx.runtime.addListener(new AgentRuntime.Listener() {
             @Override public void rateLimit(AgentEvent.RateLimit r) { Platform.runLater(() -> showUsage(r)); }
-            @Override public void changed(Agent a) { Platform.runLater(MainWindow.this::refreshSwitcher); }
-            @Override public void agentsChanged() { Platform.runLater(MainWindow.this::refreshSwitcher); }
         });
-        refreshSwitcher();
-        List<Agent> agents = ctx.runtime.agents();
-        if (agents.isEmpty()) showSetup();
-        else showAgent(agents.get(agents.size() - 1));
+        if (ctx.runtime.agents().isEmpty()) board.addAgent();
     }
 
-    private void showSetup() {
-        boolean any = !ctx.runtime.agents().isEmpty();
-        SetupForm form = new SetupForm(ctx, this::showAgent, any ? () -> {
-            if (current != null) showAgent(current.agent());
-        } : null);
-        boardArea.getChildren().setAll(form.root());
-        StackPane.setAlignment(form.root(), javafx.geometry.Pos.CENTER);
-    }
-
-    /** The pane shown now, if any (used by the screenshot tools). */
+    /** The pane last shown or used, if any (used by the screenshot tools). */
     public AgentPane currentPane() {
-        return current;
+        return board.currentPane();
+    }
+
+    public BoardView board() {
+        return board;
+    }
+
+    public Inbox inbox() {
+        return inbox;
     }
 
     public void showAgent(Agent a) {
-        AgentPane pane = panes.computeIfAbsent(a.id, id -> new AgentPane(ctx, a));
-        current = pane;
-        boardArea.getChildren().setAll(pane.root());
-        refreshSwitcher();
-        pane.focusInput();
-    }
-
-    private void refreshSwitcher() {
-        updatingSwitcher = true;
-        try {
-            switcher.getItems().setAll(ctx.runtime.agents());
-            switcher.setValue(current == null ? null : current.agent());
-            switcher.setVisible(!switcher.getItems().isEmpty());
-            switcher.setManaged(switcher.isVisible());
-        } finally {
-            updatingSwitcher = false;
-        }
+        board.showAgent(a);
     }
 
     /** {@code 5h 60% · week 68%}, reset times on hover; amber above 80 %, red above 95 % (design §7.2). */

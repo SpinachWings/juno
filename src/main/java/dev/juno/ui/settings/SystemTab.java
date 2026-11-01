@@ -75,13 +75,7 @@ public final class SystemTab extends ScrollPane {
         // TODO(Milestone 6): refuse a notes folder inside a project folder, or the reverse (design §9).
 
         box.getChildren().add(Ui.subheading("Storage"));
-        Button remove = new Button("Remove worktree");
-        Button clean = new Button("Clean up old data");
-        remove.setDisable(true);
-        clean.setDisable(true);
-        box.getChildren().add(Ui.dim("Space used per agent and in total, with Remove worktree and Clean up old data, "
-                + "arrives in Milestone 3 together with worktrees."));
-        box.getChildren().add(Ui.row(remove, clean));
+        box.getChildren().add(new StorageSection(ctx));
 
         box.getChildren().add(Ui.primary("Save", this::save));
         load();

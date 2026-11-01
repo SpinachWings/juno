@@ -12,6 +12,9 @@ import java.util.Map;
 public interface Provider {
     String id();
 
+    /** The CLI's own config folder (where its conversation transcripts live). */
+    Path configFolder();
+
     /** Runs the executable's version command. */
     VersionCheck checkVersion(String executable);
 

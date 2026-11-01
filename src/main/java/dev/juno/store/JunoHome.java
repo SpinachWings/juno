@@ -32,4 +32,12 @@ public final class JunoHome {
     public Path agentRunDir(String id) { return agentDir(id).resolve("run"); }
     public Path journalsDir(String id) { return agentDir(id).resolve("journal"); }
     public Path logsDir(String id) { return agentDir(id).resolve("logs"); }
+    /** Agents' git worktrees, {@code worktrees/<agent id>} (design §7.8). */
+    public Path worktreesDir() { return root.resolve("worktrees"); }
+    public Path worktree(String agentId) { return worktreesDir().resolve(agentId); }
+    /** Per-worktree git hooks (outside the worktree, so a checkout never contains them). */
+    public Path worktreeHooks(String agentId) { return worktreesDir().resolve(agentId + ".hooks"); }
+    /** Review snapshots per agent (Milestone 5); counted in the storage figures. */
+    public Path reviewsDir(String agentId) { return root.resolve("reviews").resolve(agentId); }
+    public Path layoutFile() { return root.resolve("layout.json"); }
 }
