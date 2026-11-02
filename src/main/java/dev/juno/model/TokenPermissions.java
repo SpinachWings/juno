@@ -17,7 +17,6 @@ public final class TokenPermissions {
             • Contents: read and write (read is enough for a reviewer)
             • Pull requests: read and write
             • Actions: read
-            • Checks: read
             • Commit statuses: read
             • Administration: read (optional; lets Juno see which checks are required)
 

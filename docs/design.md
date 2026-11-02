@@ -135,7 +135,7 @@ without a message from you, and both agents and you are told why. A message from
 
 | Host | Token type | Permissions |
 | --- | --- | --- |
-| GitHub | **Fine-grained PAT** (resource owner = the repository's owner; select the repositories) or a classic PAT with `repo` | Repository permissions: **Metadata** read; **Contents** read & write (read is enough for reviewers); **Pull requests** read & write; **Actions** read; **Checks** read; **Commit statuses** read; optional **Administration** read (lets Juno read branch protection to find required checks; rulesets are readable without it). An organisation may need to approve the token. |
+| GitHub | **Fine-grained PAT** (resource owner = the repository's owner; select the repositories) or a classic PAT with `repo` | Repository permissions: **Metadata** read; **Contents** read & write (read is enough for reviewers); **Pull requests** read & write; **Actions** read; **Commit statuses** read (fine-grained tokens have no "Checks" permission; whether check runs on a private repository are readable with these is checked by the Test button); optional **Administration** read (lets Juno read branch protection to find required checks; rulesets are readable without it). An organisation may need to approve the token. |
 | GitLab | **Two tokens** (see below) | **MCP:** a *fine-grained* personal access token with the **MCP tool** resource and **Execute** permission. Legacy PATs, project and group tokens are rejected by the MCP server. **Git and REST:** a normal personal access token (or project/group token) with `api`, `read_repository` and `write_repository` (reviewers: `api`, `read_repository`). |
 
 - A **GitLab key holds two tokens**: the MCP token above, and the git/REST token (git over HTTPS, pipeline polling,
