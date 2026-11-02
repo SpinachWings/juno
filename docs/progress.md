@@ -40,24 +40,23 @@ Extra toolsets by URL path `/mcp/x/<toolset>` (e.g. `/mcp/x/actions` adds 4 tool
 - Everything about GitLab (no sandbox): names come from a mirror of the official tools page (19.5) and are unconfirmed.
 - Real GitLab "needs approval" / manual-job states.
 
-### Spec changes this forces (for your approval; `docs/design.md` not touched)
-1. **§6 tool lists cannot deny by action.** On both hosts, approve, request changes and resolve-thread are *methods or
-   parameters* of the same tool as creating a review (`pull_request_review_write`; `save_merge_request_review`). A
-   tool-name disallow can't give the reviewer "post comments and resolve, but never approve", nor stop a coder
-   resolving threads except by not giving it that tool (the coder doesn't need it: replies use
-   `add_reply_to_pull_request_comment` / `save_note`). Merge and close are separate tools on GitHub for merge, but
-   close is `update_pull_request state: closed` (also used to edit titles). Suggested: Juno puts a filtering proxy in
-   front of the host MCP server (its per-agent `mcp.json` points at Juno), which enforces the allowed methods per
-   profile; or accept prompt-only enforcement for the reviewer's approve/request-changes.
-2. **Required checks and "needs approval" come from REST/GraphQL**, not MCP (as §13 anticipated). Pipeline polling
-   uses REST for these.
-3. **Key permissions to document** in Keys: GitHub fine-grained tokens need Contents (read/write for coders),
-   Pull requests (read/write), Actions (read), Checks/Commit statuses (read), Metadata. GitLab needs a *fine-grained*
-   PAT (MCP resource + Execute) for the MCP server, and a normal PAT for git over HTTPS and REST. §5.1's "Test"
-   should check each.
-4. **GitLab key = two tokens** in practice (fine-grained for MCP, regular for git/REST); the spec has one token per
-   key. Needs a decision.
-5. GitHub: `<name>.ghe.com` URL still unverified (no access).
+### Spec changes (applied to `docs/design.md` on your OK, 2026-11-02)
+1. **Host MCP proxy** (new §6.6): agents' `mcp.json` points at a proxy in Juno's MCP server, which holds the key's token
+   and allows only the actions a profile may use (approve / request changes / resolve / merge / close are arguments of
+   tools the profiles need, so tool-name denies can't express them). §5.1.1 and §6 table updated.
+2. **Required checks and "needs approval" via REST** (§6.6 table, §13).
+3. **Token permissions documented** in §5.1 and in the app: Settings → Keys → "Required token permissions" (text in
+   `model.TokenPermissions`, switches with the key's kind). Not yet shown in the first-run setup.
+4. **A GitLab key holds two tokens** (MCP fine-grained PAT; git/REST token) in §5.1. **Stub:** `model.Key` still has one
+   token and the Keys form one token field; the second token field, its vault entry and the Test button are
+   Milestone 5 (TODO there).
+5. `<name>.ghe.com` URL still unverified.
+
+### Second token (2026-11-02)
+A second sandbox token had Metadata/read access only: branch, file and PR creation all returned 403 "Resource not
+accessible by personal access token". So the live write checks (open PR, pending review + inline comment + submit,
+reply, resolve, checks on a PR head) are **still open**; they need Contents and Pull requests write on the sandbox repo.
+Nothing was created on the sandbox.
 
 ## Milestone 4: Juno and communication. Done (2026-11-01)
 

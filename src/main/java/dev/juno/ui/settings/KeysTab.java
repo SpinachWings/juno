@@ -3,6 +3,7 @@ package dev.juno.ui.settings;
 import dev.juno.app.AppContext;
 import dev.juno.model.Key;
 import dev.juno.model.McpUrls;
+import dev.juno.model.TokenPermissions;
 import dev.juno.model.Validation;
 import dev.juno.store.SettingsStore;
 import dev.juno.store.TokenStore;
@@ -31,6 +32,7 @@ public final class KeysTab extends BorderPane {
     private final TextField gitEmail = new TextField();
     private final TextField mcpOverride = new TextField();
     private final Label mcpResolved = Ui.dim("");
+    private final Label permissions = new Label();
     private final Label status = new Label();
     private final Button delete = Ui.button("Delete", this::deleteKey);
 
@@ -94,6 +96,12 @@ public final class KeysTab extends BorderPane {
         g.add(new Label("Author email"), 0, r); g.add(gitEmail, 1, r++);
         g.add(Ui.dim("Commits made with this key use this identity, e.g. a bot account's."), 1, r++);
 
+        permissions.setWrapText(true);
+        TitledPane needs = new TitledPane("Required token permissions", permissions);
+        needs.setExpanded(false);
+        permissions.setPadding(new Insets(8));
+        g.add(needs, 0, r++, 2, 1);
+
         VBox adv = new VBox(8, new Label("MCP URL override"), mcpOverride, mcpResolved);
         adv.setPadding(new Insets(8));
         TitledPane advanced = new TitledPane("Advanced", adv);
@@ -155,6 +163,7 @@ public final class KeysTab extends BorderPane {
 
     private void refreshUrl() {
         if (editing == null) return;
+        permissions.setText(TokenPermissions.forKind(kind.getValue()));
         Key probe = new Key();
         probe.kind = kind.getValue() == null ? Key.Kind.GITHUB : kind.getValue();
         probe.host = host.getText();
