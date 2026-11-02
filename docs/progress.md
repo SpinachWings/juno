@@ -1,5 +1,64 @@
 # Progress
 
+## Milestone 5a: GitHub/GitLab capability check. Partly done (2026-11-02)
+
+Spike, no product code. **GitHub**: live against the sandbox (`SpinachWings/terrible-workout-tracker`) with a
+fine-grained PAT, read-only calls plus `tools/list` and schemas. **GitLab**: docs only (no sandbox). **Not done:**
+every write (see "Not verified live"). Scripts were throwaway and are not kept.
+
+### Capability table
+
+| Capability | GitHub (`https://api.githubcopilot.com/mcp/`) | GitLab (`https://gitlab.com/api/v4/mcp`, docs, GitLab 19.5) |
+| --- | --- | --- |
+| Open PR/MR | `create_pull_request` (head, base, title, body, draft) | `save_merge_request` (create when no `merge_request_iid`; aliases `create_merge_request`) |
+| Read PR/MR, files, diff, commits | `pull_request_read` `method`: get, get_diff, get_files, get_commits, get_reviews, get_comments | `get_merge_request` with `include`: diffs, commits, notes, pipelines, discussions, approvals |
+| Review threads (list, with ids) | `pull_request_read` `get_review_comments` (threads with `PRRT_` node ids, outdated flags) | `get_merge_request` `include: discussions` |
+| Inline comment anchored to a commit | `pull_request_review_write` `create` (pending review, `commitID`) + `add_comment_to_pending_review` (path, line, side, startLine) + `pull_request_review_write` `submit_pending` (`event: COMMENT`, body = summary) | `save_merge_request_review` `create_diff_note` (old/new path and line, `sha`), then `submit_review` |
+| Summary comment | the submitted review's `body`, or `add_issue_comment` | `save_note`, or `save_merge_request_review` `create_note` / `submit_review` `summary` |
+| Reply to a thread | `add_reply_to_pull_request_comment` (numeric comment id, not the thread id) | `save_note` with `discussion_id`, or `save_merge_request_review` `reply_discussion` |
+| Resolve a thread | `pull_request_review_write` `method: resolve_thread` (needs `threadId`) | `save_merge_request_review` `method: resolve_discussion` |
+| Pipeline / check status per commit | `pull_request_read` `get_check_runs`, `get_status` (head commit; verified to answer, 0 on a PR with no runs); workflow runs: separate toolset `actions` (`actions_list` `list_workflow_runs`, `actions_get`, `get_job_logs`) | `get_merge_request` `include: pipelines`; `list_pipelines`, `get_pipeline` (`include: jobs`) |
+| Required checks | **missing → REST/GraphQL**: `GET /repos/{r}/rules/branches/{branch}` (rulesets; answers 200 with a PAT), branch protection `.../protection/required_status_checks` (403 for this PAT: needs Administration read), or GraphQL `isRequired` on check contexts | **missing → REST**: project setting `only_allow_merge_if_pipeline_succeeds`; MR `detailed_merge_status` |
+| "Waiting for approval" | **missing in MCP → REST**: workflow runs with `status: action_required` (also `waiting`) | job `status: manual`, pipeline `manual` / `blocked` |
+| Approve | `pull_request_review_write` `event: APPROVE` | `save_merge_request_review` `method: approve` |
+| Request changes | `pull_request_review_write` `event: REQUEST_CHANGES` | `save_merge_request_review` `verdict` (unverified) |
+| Merge | `merge_pull_request` | `accept_merge_request` |
+| Close | `update_pull_request` `state: closed` | `save_merge_request` `state_event: close` |
+| Token type | fine-grained or classic PAT as `Authorization: Bearer` (verified) | **fine-grained PAT** with the MCP tool resource + Execute; OAuth with `mcp` scope. **Legacy PATs, project and group tokens are rejected (403).** |
+
+Other GitHub facts (verified): the server is stateless apart from a session id on `initialize`; `tools/list` needs the
+`Mcp-Protocol-Version` header (without it GitHub answers an HTML "Bad request"). Default toolset has 46 tools.
+Extra toolsets by URL path `/mcp/x/<toolset>` (e.g. `/mcp/x/actions` adds 4 tools; `/mcp/x/all` has 113). The
+`X-MCP-Toolsets` header form did not work in my calls. Tools can be limited per call with `X-MCP-Tools` /
+`X-MCP-Exclude-Tools` (header names listed in the server's CORS headers; not tested).
+
+### Not verified live (needs writes the sandbox didn't allow)
+- Branch/file creation was refused (token has no Contents write); opening a PR from an existing branch was then
+  blocked by the session's permission classifier, so **no PR was opened, nothing was posted**. Pending: opening a PR,
+  pending review + inline comment + submit, reply, resolve, and check runs/status on a PR head that has runs.
+- Whether the sandbox workflow (`.github/workflows/ci.yml`) runs on `pull_request`.
+- Everything about GitLab (no sandbox): names come from a mirror of the official tools page (19.5) and are unconfirmed.
+- Real GitLab "needs approval" / manual-job states.
+
+### Spec changes this forces (for your approval; `docs/design.md` not touched)
+1. **§6 tool lists cannot deny by action.** On both hosts, approve, request changes and resolve-thread are *methods or
+   parameters* of the same tool as creating a review (`pull_request_review_write`; `save_merge_request_review`). A
+   tool-name disallow can't give the reviewer "post comments and resolve, but never approve", nor stop a coder
+   resolving threads except by not giving it that tool (the coder doesn't need it: replies use
+   `add_reply_to_pull_request_comment` / `save_note`). Merge and close are separate tools on GitHub for merge, but
+   close is `update_pull_request state: closed` (also used to edit titles). Suggested: Juno puts a filtering proxy in
+   front of the host MCP server (its per-agent `mcp.json` points at Juno), which enforces the allowed methods per
+   profile; or accept prompt-only enforcement for the reviewer's approve/request-changes.
+2. **Required checks and "needs approval" come from REST/GraphQL**, not MCP (as §13 anticipated). Pipeline polling
+   uses REST for these.
+3. **Key permissions to document** in Keys: GitHub fine-grained tokens need Contents (read/write for coders),
+   Pull requests (read/write), Actions (read), Checks/Commit statuses (read), Metadata. GitLab needs a *fine-grained*
+   PAT (MCP resource + Execute) for the MCP server, and a normal PAT for git over HTTPS and REST. §5.1's "Test"
+   should check each.
+4. **GitLab key = two tokens** in practice (fine-grained for MCP, regular for git/REST); the spec has one token per
+   key. Needs a decision.
+5. GitHub: `<name>.ghe.com` URL still unverified (no access).
+
 ## Milestone 4: Juno and communication. Done (2026-11-01)
 
 ### Done
