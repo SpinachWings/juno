@@ -61,6 +61,7 @@ public final class AgentPane {
     private String shownPermission;
     private String shownProposals = "";
     private boolean folderCardShown;
+    private String shownAsk = "";
 
     public AgentPane(AppContext ctx, Agent agent, PaneHost host) {
         this.ctx = ctx;
@@ -253,7 +254,7 @@ public final class AgentPane {
         modelLabel.setText((model.isBlank() ? "default model" : model) + " · " + (effort.isBlank() ? "default effort" : effort));
         resume.setDisable(!(agent.interrupted || (agent.status == Agent.Status.AWAITING
                 && agent.reason == Agent.Reason.FAILED)) || agent.turnOpen);
-        stop.setDisable(!agent.turnOpen && agent.heldMessage == null);
+        stop.setDisable(!agent.turnOpen && agent.heldMessage == null && agent.status != Agent.Status.WAITING);
         root.setStyle("-fx-border-color: " + agent.colour + ";");
         refreshContacts();
 
@@ -317,18 +318,39 @@ public final class AgentPane {
         String permId = perms.isEmpty() ? null : perms.get(0).id;
         List<dev.juno.comms.Proposal> proposals = juno ? runtime.orchestration().proposals() : List.of();
         String proposalIds = String.join(",", proposals.stream().map(p -> p.id).toList());
+        String ask = agent.review != null && agent.review.ask != null ? agent.review.ask + agent.review.askText : "";
         if (java.util.Objects.equals(permId, shownPermission) && folder == folderCardShown
-                && proposalIds.equals(shownProposals)) return;
+                && proposalIds.equals(shownProposals) && ask.equals(shownAsk)) return;
+        shownAsk = ask;
         shownPermission = permId;
         folderCardShown = folder;
         shownProposals = proposalIds;
         cards.getChildren().clear();
         if (permId != null) cards.getChildren().add(permissionCard(perms.get(0)));
         if (folder) cards.getChildren().add(folderCard(l));
+        if (!ask.isEmpty()) cards.getChildren().add(pipelineCard());
         for (dev.juno.comms.Proposal p : proposals) cards.getChildren().add(new ProposalCard(ctx, p, this::focusInput).node());
     }
 
     /** The four answers and the editable rule (design §7.5). */
+    /** Pipelines that need the user: the review waits on this card or the inbox (design §6.3). */
+    private VBox pipelineCard() {
+        Label title = new Label("⚠ " + agent.review.askText);
+        title.setWrapText(true);
+        title.getStyleClass().add("card-title");
+        Button go = Ui.primary(agent.review.ask.goLabel, () -> answerReview(true));
+        Button cancel = Ui.button("Cancel", () -> answerReview(false));
+        cancel.getStyleClass().add("danger");
+        VBox card = new VBox(6, title, new HBox(8, go, cancel));
+        card.getStyleClass().add("card-folder");
+        return card;
+    }
+
+    private void answerReview(boolean go) {
+        String err = runtime.reviews().answer(agent, go);
+        if (err != null) runtime.say(agent, err, "warn");
+    }
+
     private VBox permissionCard(LiveAgent.PendingPermission pp) {
         Profile p = runtime.profile(agent.profile);
         Label title = new Label("🔐 " + agent.name + " wants " + pp.tool + ": " + permissionDetail(pp));

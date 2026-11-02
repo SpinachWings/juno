@@ -42,7 +42,7 @@ public final class FakeProvider implements Provider {
     @Override public String userMessage(String text) { return real.userMessage(text); }
     @Override public String interrupt(String requestId) { return real.interrupt(requestId); }
     @Override public String compactMessage() { return real.compactMessage(); }
-    @Override public String mcpConfig(String junoUrl, String token) { return real.mcpConfig(junoUrl, token); }
+    @Override public String mcpConfig(String junoUrl, String token, Map<String, String> hostServers) { return real.mcpConfig(junoUrl, token, hostServers); }
     @Override public String permissionPromptTool() { return real.permissionPromptTool(); }
     @Override public Path writeSkills(Path dir, List<SkillSet> skills) throws IOException { return real.writeSkills(dir, skills); }
     @Override public String skillName(String packId, String skill) { return real.skillName(packId, skill); }

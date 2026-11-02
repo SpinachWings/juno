@@ -7,6 +7,15 @@ import java.util.Optional;
  * {@code keyring:juno/key/<id>} (OS vault) or {@code env:VARIABLE}.
  */
 public interface TokenStore {
+    /** No tokens at all: no vault, nothing resolves. */
+    TokenStore NONE = new TokenStore() {
+        @Override public boolean vaultAvailable() { return false; }
+        @Override public String vaultProblem() { return "No vault."; }
+        @Override public String save(String id, String token) { throw new IllegalStateException("No vault."); }
+        @Override public void delete(String id) {}
+        @Override public Optional<String> resolve(String reference) { return Optional.empty(); }
+    };
+
     /** Whether an OS vault is usable on this machine. */
     boolean vaultAvailable();
 

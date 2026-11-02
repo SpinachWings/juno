@@ -28,6 +28,13 @@ public final class KeysTab extends BorderPane {
     private final Label storedNote = Ui.dim("");
     private final CheckBox useEnv = new CheckBox("Use an environment variable instead");
     private final TextField envName = new TextField();
+    private final Label gitTokenLabel = new Label("Git and REST token");
+    private final PasswordField gitToken = new PasswordField();
+    private final Label gitEnvLabel = new Label("Git and REST variable");
+    private final TextField gitEnvName = new TextField();
+    private final Label gitStoredNote = Ui.dim("");
+    private final TextField testRepo = new TextField();
+    private final Label testResult = new Label();
     private final TextField gitName = new TextField();
     private final TextField gitEmail = new TextField();
     private final TextField mcpOverride = new TextField();
@@ -68,6 +75,7 @@ public final class KeysTab extends BorderPane {
         host.textProperty().addListener((o, a, b) -> refreshUrl());
         mcpOverride.textProperty().addListener((o, a, b) -> refreshUrl());
         useEnv.selectedProperty().addListener((o, a, b) -> refreshTokenMode());
+        kind.valueProperty().addListener((o, a, k) -> refreshTokenMode());
         status.setWrapText(true);
 
         setCenter(new ScrollPane(form()));
@@ -91,6 +99,9 @@ public final class KeysTab extends BorderPane {
         g.add(storedNote, 1, r++);
         g.add(useEnv, 1, r++);
         g.add(new Label("Variable name"), 0, r); g.add(envName, 1, r++);
+        g.add(gitTokenLabel, 0, r); g.add(gitToken, 1, r++);
+        g.add(gitStoredNote, 1, r++);
+        g.add(gitEnvLabel, 0, r); g.add(gitEnvName, 1, r++);
         g.add(Ui.subheading("Git identity (optional)"), 0, r++, 2, 1);
         g.add(new Label("Author name"), 0, r); g.add(gitName, 1, r++);
         g.add(new Label("Author email"), 0, r); g.add(gitEmail, 1, r++);
@@ -108,11 +119,16 @@ public final class KeysTab extends BorderPane {
         advanced.setExpanded(false);
         g.add(advanced, 0, r++, 2, 1);
 
-        Button test = Ui.button("Test", () -> Ui.info(getScene().getWindow(), "Test",
-                "Testing a key against its host's MCP server arrives in Milestone 5."));
+        Button test = Ui.button("Test", this::test);
         Button save = Ui.primary("Save", this::save);
         g.add(Ui.row(save, test, delete), 1, r++);
         g.add(status, 1, r++);
+        g.add(new Label("Test repository"), 0, r); g.add(testRepo, 1, r++);
+        testResult.setWrapText(true);
+        g.add(testResult, 1, r++);
+        testRepo.setPromptText("owner/repo, to check its permissions (nothing is posted or changed)");
+        gitToken.setPromptText("GitLab's MCP server takes only the token above; this one is for git and REST");
+        gitEnvName.setPromptText("e.g. GITLAB_GIT_TOKEN");
         host.setPromptText("github.com");
         envName.setPromptText("e.g. GITHUB_TOKEN");
         label.setPromptText("e.g. me, or review-bot");
@@ -142,6 +158,14 @@ public final class KeysTab extends BorderPane {
         storedNote.setText(!saved || k.token.isBlank() ? ""
                 : env ? "Read from the environment when an agent starts."
                 : "•".repeat(8) + "  stored in the OS keyring. Type a new token to replace it.");
+        gitToken.clear();
+        boolean gitEnv = TokenStore.isEnvReference(k.gitToken);
+        gitEnvName.setText(gitEnv ? k.gitToken.substring(4) : "");
+        gitStoredNote.setText(!saved || k.gitToken.isBlank() ? ""
+                : gitEnv ? "Read from the environment." : "•".repeat(8) + "  stored in the OS keyring. Type a new token to replace it.");
+        testResult.setText("");
+        testRepo.setText(ctx.settings.projects.stream().map(p -> p.remote).filter(x -> x != null && !x.isBlank())
+                .findFirst().orElse(""));
         status.setText(vaultWarning());
         status.getStyleClass().setAll("label", "warn");
         refreshTokenMode();
@@ -159,6 +183,43 @@ public final class KeysTab extends BorderPane {
         token.setDisable(env || !ctx.tokens.vaultAvailable());
         envName.setDisable(!env);
         if (!ctx.tokens.vaultAvailable() && !env && editing != null) useEnv.setSelected(true);
+        boolean gitlab = kind.getValue() == Key.Kind.GITLAB;
+        for (Node n : List.of(gitTokenLabel, gitToken, gitStoredNote, gitEnvLabel, gitEnvName)) {
+            n.setVisible(gitlab);
+            n.setManaged(gitlab);
+        }
+        gitToken.setDisable(env || !ctx.tokens.vaultAvailable());
+        gitEnvName.setDisable(!env);
+    }
+
+    /** Runs against the saved key, off the UI thread: names what's missing, posts and changes nothing (design §5.1). */
+    private void test() {
+        if (editing == null) return;
+        Key saved = ctx.settings.keys.stream().filter(x -> x.id.equals(editing.id)).findFirst().orElse(null);
+        if (saved == null) {
+            testResult.setText("Save the key first.");
+            return;
+        }
+        String repo = testRepo.getText().trim();
+        testResult.setText("Testing…");
+        Thread t = new Thread(() -> {
+            String text;
+            try {
+                StringBuilder sb = new StringBuilder();
+                for (var line : ctx.runtime.host().test(saved, repo)) {
+                    sb.append(line.ok() == null ? "? " : line.ok() ? "✓ " : "✗ ").append(line.what());
+                    if (!line.detail().isBlank()) sb.append(": ").append(line.detail());
+                    sb.append('\n');
+                }
+                text = sb.toString().strip();
+            } catch (RuntimeException e) {
+                text = "✗ The test failed: " + e.getMessage();
+            }
+            String shown = text;
+            javafx.application.Platform.runLater(() -> testResult.setText(shown));
+        }, "juno-key-test");
+        t.setDaemon(true);
+        t.start();
     }
 
     private void refreshUrl() {
@@ -181,7 +242,10 @@ public final class KeysTab extends BorderPane {
         k.mcpUrlOverride = mcpOverride.getText().trim();
         boolean env = useEnv.isSelected();
         boolean tokenGiven = !env && !token.getText().isBlank();
-        List<String> problems = Validation.key(k, ctx.settings.keys, tokenGiven, env ? envName.getText() : "");
+        boolean gitlab = k.kind == Key.Kind.GITLAB;
+        boolean gitTokenGiven = gitlab && !env && !gitToken.getText().isBlank();
+        List<String> problems = new java.util.ArrayList<>(Validation.key(k, ctx.settings.keys, tokenGiven, env ? envName.getText() : ""));
+        if (gitlab) problems.addAll(Validation.gitToken(k, gitTokenGiven, env ? gitEnvName.getText() : ""));
         if (!problems.isEmpty()) {
             Ui.problems(getScene().getWindow(), problems);
             return;
@@ -197,11 +261,21 @@ public final class KeysTab extends BorderPane {
                 Ui.problems(getScene().getWindow(), List.of("Enter a token to replace the environment variable."));
                 return;
             }
+            if (!gitlab) {
+                if (previous != null && !previous.gitToken.isBlank()) ctx.tokens.delete(Key.gitTokenId(k.id));
+                k.gitToken = "";
+            } else if (env) {
+                if (previous != null && !TokenStore.isEnvReference(previous.gitToken)) ctx.tokens.delete(Key.gitTokenId(k.id));
+                k.gitToken = "env:" + gitEnvName.getText().trim();
+            } else if (gitTokenGiven) {
+                k.gitToken = ctx.tokens.save(Key.gitTokenId(k.id), gitToken.getText().trim());
+            }
         } catch (RuntimeException e) {
             Ui.error(getScene().getWindow(), "Couldn't store the token", e.getMessage());
             return;
         }
         token.clear();
+        gitToken.clear();
         if (previous == null) ctx.settings.keys.add(k);
         else ctx.settings.keys.set(ctx.settings.keys.indexOf(previous), k);
         ctx.save();
@@ -214,6 +288,7 @@ public final class KeysTab extends BorderPane {
                 "Delete “" + editing.label + "”? Its stored token is removed too. Agents using it lose "
                         + "host access until you pick another key.", "Delete")) return;
         ctx.tokens.delete(editing.id);
+        ctx.tokens.delete(Key.gitTokenId(editing.id));
         ctx.settings.keys.removeIf(x -> x.id.equals(editing.id));
         ctx.save();
         reloadList(null);

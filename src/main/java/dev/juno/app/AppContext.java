@@ -33,7 +33,7 @@ public final class AppContext {
         this.skills = new SkillLibrary(home);
         this.skillResolver = new SkillResolver(skills);
         this.settings = store.load();
-        this.runtime = new AgentRuntime(home, provider, () -> settings, this::save, skills, skillResolver);
+        this.runtime = new AgentRuntime(home, provider, () -> settings, this::save, skills, skillResolver, tokens);
     }
 
     public static AppContext create() {

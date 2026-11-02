@@ -45,8 +45,11 @@ public interface Provider {
     /** The message that compacts the conversation. */
     String compactMessage();
 
-    /** MCP config file contents connecting the agent to Juno's server. */
-    String mcpConfig(String junoUrl, String token);
+    /**
+     * MCP config file contents connecting the agent to Juno's server and, under their names, to the host MCP servers
+     * it may use (URLs of Juno's proxy, design §6.6; same token).
+     */
+    String mcpConfig(String junoUrl, String token, Map<String, String> hostServers);
 
     /** The name the permission prompt tool has inside the agent. */
     String permissionPromptTool();
@@ -65,11 +68,14 @@ public interface Provider {
         List<AgentEvent> parse(String line);
     }
 
-    /** Everything one launch needs. Blank strings and nulls mean "CLI default" / "none". */
+    /**
+     * Everything one launch needs. Blank strings and nulls mean "CLI default" / "none". {@code gitEnvironment}: the git
+     * settings of design §5.1.1; a null value removes the variable.
+     */
     record LaunchSpec(String executable, Path workingDir, String model, String effort, String permissionMode,
                       List<String> allowedTools, List<String> disallowedTools, int maxTurns, Double spendLimit,
                       Path systemPromptFile, Path mcpConfigFile, Path pluginDir, String resumeSession,
-                      String agentId) {}
+                      String agentId, Map<String, String> gitEnvironment) {}
 
     enum HookStatus { INSTALLED, OUTDATED, NOT_INSTALLED }
 

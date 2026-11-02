@@ -22,8 +22,8 @@ import javafx.stage.Popup;
  * The inbox (design §7.2): everything waiting on you, each with the agent, the reason, a one-line summary and its answer
  * buttons or "go to pane", plus a quiet Waiting section. Items come from the agents' state, so they vanish when
  * answered anywhere.
- * Juno's proposals (assignments, fresh starts, link suggestions) are listed with their answers too.
- * TODO(Milestone 5): review-comment approvals, pipelines.
+ * Juno's proposals (assignments, fresh starts, link suggestions) are listed with their answers too. A reviewer's
+ * comments wait as its ❓ question; what it asks about pipelines is listed with its buttons.
  */
 public final class Inbox {
     /** One thing waiting on the user. */
@@ -107,6 +107,13 @@ public final class Inbox {
                 case FOLDER -> out.add(new Item(a, a.reason.icon + " folder", l.folderReason() == null
                         ? "needs a project" : l.folderReason(), List.of(go(a))));
                 case FAILED, INTERRUPTED -> {
+                    if (a.review != null && a.review.ask != null) {
+                        Button go = Ui.primary(a.review.ask.goLabel, () -> say(a, ctx.runtime.reviews().answer(a, true)));
+                        Button cancel = Ui.button("Cancel", () -> say(a, ctx.runtime.reviews().answer(a, false)));
+                        cancel.getStyleClass().add("danger");
+                        out.add(new Item(a, a.reason.icon + " pipelines", a.statusDetail, List.of(go, cancel, go(a))));
+                        continue;
+                    }
                     Button resume = Ui.primary("Resume", () -> {
                         String err = ctx.runtime.resume(a);
                         if (err != null) ctx.runtime.say(a, err, "warn");
@@ -122,6 +129,10 @@ public final class Inbox {
     private String name(String id) {
         LiveAgent l = ctx.runtime.live(id);
         return l == null ? "(deleted)" : l.agent.name;
+    }
+
+    private void say(Agent a, String err) {
+        if (err != null) ctx.runtime.say(a, err, "warn");
     }
 
     private void said(String err) {
@@ -198,11 +209,17 @@ public final class Inbox {
             who.setStyle("-fx-text-fill: " + it.agent().colour + ";");
             Label why = new Label(it.reason());
             why.getStyleClass().add("warn");
-            HBox head = new HBox(8, who, why, Ui.grow());
-            head.getChildren().addAll(it.buttons());
+            HBox head = new HBox(8, who, why);
             head.setAlignment(Pos.CENTER_LEFT);
             Label summary = Ui.dim(it.summary());
-            VBox card = new VBox(3, head, summary);
+            summary.setWrapText(true);
+            HBox buttons = new HBox(8);
+            buttons.setAlignment(Pos.CENTER_RIGHT);
+            for (Button b : it.buttons()) {
+                b.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
+                buttons.getChildren().add(b);
+            }
+            VBox card = new VBox(4, head, summary, buttons);
             card.getStyleClass().add("inbox-item");
             HBox.setHgrow(card, Priority.ALWAYS);
             content.getChildren().add(card);

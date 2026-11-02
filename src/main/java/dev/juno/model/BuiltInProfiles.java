@@ -61,8 +61,9 @@ public final class BuiltInProfiles {
         p.needsProjectFolder = true;
         p.editsFiles = true;
         p.allowedTools.addAll(List.of("Read", "Edit", "Write", "Grep", "Glob", "Bash(git:*)", "Task"));
-        // Host MCP tools (open PR/MR, read comments, reply) are added in Milestone 5, once the names are verified (§13).
-        p.disallowedTools.addAll(List.of("Bash(git push --force:*)", "Bash(gh:*)", "Bash(glab:*)"));
+        p.allowedTools.addAll(List.of("host:read", "host:open", "host:reply"));
+        p.disallowedTools.addAll(List.of("Bash(git push --force:*)", "Bash(gh:*)", "Bash(glab:*)", "host:review",
+                "host:resolve", "host:approve", "host:request-changes", "host:merge", "host:close", "host:edit"));
         p.commands.add(new ProfileCommand("checkforcomments",
                 Prompts.load("commands/coder-checkforcomments.md"), true));
         return p;
@@ -71,8 +72,10 @@ public final class BuiltInProfiles {
     private static Profile reviewer() {
         Profile p = base(REVIEWER, "reviewer", "claude-sonnet-5-5", "high", "default");
         p.allowedTools.addAll(List.of("Read", "Grep", "Glob", "Bash(git diff:*)", "Bash(git log:*)",
-                "Bash(git show:*)", "mcp__juno__start_review", "mcp__juno__end_review"));
-        p.disallowedTools.addAll(List.of("Edit", "Write", "Bash(gh:*)", "Bash(glab:*)"));
+                "Bash(git show:*)", "mcp__juno__start_review", "mcp__juno__end_review", "host:read", "host:review",
+                "host:reply", "host:resolve"));
+        p.disallowedTools.addAll(List.of("Edit", "Write", "Bash(gh:*)", "Bash(glab:*)", "host:open", "host:approve",
+                "host:request-changes", "host:merge", "host:close", "host:edit"));
         return p;
     }
 

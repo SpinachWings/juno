@@ -37,8 +37,8 @@ public final class JunoHome {
     public Path worktree(String agentId) { return worktreesDir().resolve(agentId); }
     /** Per-worktree git hooks (outside the worktree, so a checkout never contains them). */
     public Path worktreeHooks(String agentId) { return worktreesDir().resolve(agentId + ".hooks"); }
-    /** Review snapshots per agent (Milestone 5); counted in the storage figures. */
-    public Path reviewsDir(String agentId) { return root.resolve("reviews").resolve(agentId); }
+    /** Review snapshots, {@code review/<agent id>-<pr>-<commit>} (design §6.3). */
+    public Path reviewDir() { return root.resolve("review"); }
     public Path layoutFile() { return root.resolve("layout.json"); }
     /** Links and proposals held for approval (design §4.1, §4.2). */
     public Path commsFile() { return root.resolve("comms.json"); }

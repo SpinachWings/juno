@@ -97,7 +97,7 @@ class ClaudeStreamParserTest {
         ClaudeCodeProvider cc = new ClaudeCodeProvider(dir.resolve("claude"), new JunoHome(dir.resolve("home")));
         Provider.LaunchSpec s = new Provider.LaunchSpec("claude", dir, "haiku", "low", "default",
                 List.of("Read", "Bash(git:*)"), List.of("Write"), 150, 2.5, dir.resolve("sp.md"), dir.resolve("mcp.json"),
-                dir.resolve("plugins"), "sess-1", "a1");
+                dir.resolve("plugins"), "sess-1", "a1", java.util.Map.of());
         String line = String.join(" ", cc.commandLine(s));
         for (String flag : List.of("-p", "--input-format stream-json", "--output-format stream-json", "--verbose",
                 "--forward-subagent-text", "--model haiku", "--effort low", "--permission-mode default",
@@ -107,7 +107,7 @@ class ClaudeStreamParserTest {
             assertTrue(line.contains(flag), "missing " + flag + " in " + line);
         }
         assertEquals("a1", cc.environment(s).get("JUNO_AGENT_ID"));
-        assertTrue(cc.mcpConfig("http://127.0.0.1:1/mcp", "tok").contains("Bearer tok"));
+        assertTrue(cc.mcpConfig("http://127.0.0.1:1/mcp", "tok", java.util.Map.of()).contains("Bearer tok"));
         assertFalse(cc.userMessage("hi \"x\"").contains("\n"));
     }
 }

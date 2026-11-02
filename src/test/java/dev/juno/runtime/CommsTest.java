@@ -533,7 +533,7 @@ class CommsTest {
         Profile rev = rt.profile("tester");
         rev.allowedTools.add("mcp__juno__end_review");
         Agent bob = rt.create("bob", "tester", null, null);
-        bob.reviewOpen = true; // start_review arrives in Milestone 5
+        bob.reviewOpen = true;
         commands.handle(rt.juno(), "/assignbob CALL report {\"text\":\"comments posted\"}");
         waitUntil(() -> replies(bob).contains("report: Saved. Juno gets it when your review is finished."));
         waitUntil(() -> bob.heldReport != null);

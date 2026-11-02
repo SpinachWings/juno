@@ -42,12 +42,17 @@ public final class AgentPrompts {
     /** {@code contacts}: who the agent can talk to, one per line (design §4.1). */
     public static String systemPrompt(Settings s, Agent a, Profile profile, Project project, Path folder, String branch,
                                       String contacts) {
+        return systemPrompt(s, a, profile, project, folder, branch, contacts, "");
+    }
+
+    /** {@code hostAccess}: what its keys reach, blank without a key (design §5.1.1). Never a token. */
+    public static String systemPrompt(Settings s, Agent a, Profile profile, Project project, Path folder, String branch,
+                                      String contacts, String hostAccess) {
         Map<String, Object> v = profileValues(s, a, project);
         v.put("project", project == null ? "" : project.name);
         v.put("folder", folder.toString());
         v.put("branch", branch);
-        // TODO(Milestone 5): the agent's GitHub/GitLab key (design §5.1.1).
-        v.put("host_access", "");
+        v.put("host_access", hostAccess);
         v.put("contacts", contacts);
         v.put("report_length", s.system.reportLength);
         return Prompts.render(Prompts.load("preamble.md"), v).trim() + "\n\n"

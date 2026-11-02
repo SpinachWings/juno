@@ -124,13 +124,18 @@ public final class ClaudeCodeProvider implements Provider {
     @Override public String compactMessage() { return "/compact"; }
 
     @Override
-    public String mcpConfig(String junoUrl, String token) {
+    public String mcpConfig(String junoUrl, String token, Map<String, String> hostServers) {
         ObjectNode root = Json.MAPPER.createObjectNode();
-        ObjectNode juno = root.putObject("mcpServers").putObject(JUNO_SERVER);
-        juno.put("type", "http");
-        juno.put("url", junoUrl);
-        juno.putObject("headers").put("Authorization", "Bearer " + token);
-        // TODO(Milestone 5): the host's MCP server for the agent's key (design §5.1.1).
+        ObjectNode servers = root.putObject("mcpServers");
+        Map<String, String> all = new LinkedHashMap<>();
+        all.put(JUNO_SERVER, junoUrl);
+        all.putAll(hostServers);
+        all.forEach((name, url) -> {
+            ObjectNode s = servers.putObject(name);
+            s.put("type", "http");
+            s.put("url", url);
+            s.putObject("headers").put("Authorization", "Bearer " + token);
+        });
         return root.toPrettyString();
     }
 

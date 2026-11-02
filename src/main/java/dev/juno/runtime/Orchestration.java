@@ -105,6 +105,11 @@ public final class Orchestration {
     }
 
     Reply call(String agentId, String tool, JsonNode args) {
+        // It talks to the host, so not under the lock.
+        if (tool.equals("start_review")) {
+            return need(args, "target") != null ? missing(args, "target")
+                    : rt.reviews().start(agentId, args.path("target").asText());
+        }
         synchronized (rt) {
             LiveAgent l = rt.live(agentId);
             if (l == null) return Reply.refused(result("common", "call-failed", Map.of("reason", "this agent no longer exists")));
@@ -124,8 +129,6 @@ public final class Orchestration {
                 case "set_link" -> need(args, "a", "b") != null ? missing(args, "a", "b")
                         : setLink(args.path("a").asText(), args.path("b").asText(), args.path("open").asBoolean(true),
                         args.path("requested_by_user").asBoolean(false), args.path("reason").asText(""));
-                // TODO(Milestone 5): pipelines, the review snapshot and the review folder (design §6.3).
-                case "start_review" -> Reply.refused(result("start_review", "not-yet", Map.of()));
                 case "end_review" -> endReview(l);
                 default -> Reply.refused(result("common", "unknown-tool", Map.of("tool", tool)));
             };
@@ -239,8 +242,9 @@ public final class Orchestration {
         }
         if (!from.equals("user") || isJuno(a)) return;
         // A plain message to an idle agent is a direct task: it takes over from Juno's (design §4.2). To an agent
-        // that is asking or was interrupted, it's an answer, and Juno's task goes on.
-        if (a.status == Status.IDLE || a.status == Status.DONE) {
+        // that is asking or was interrupted, or reviewing (the user answers about its comments), it's an answer, and
+        // Juno's task goes on.
+        if (!a.reviewOpen && (a.status == Status.IDLE || a.status == Status.DONE)) {
             a.task = null;
             a.reportDraft = null;
             if (rt.settingsNow().system.tellJunoAboutDirectTasks) {
@@ -324,7 +328,7 @@ public final class Orchestration {
     private Reply endReview(LiveAgent l) {
         Agent a = l.agent;
         if (!a.reviewOpen) return Reply.ok(result("end_review", "none", Map.of()));
-        a.reviewOpen = false;
+        rt.reviews().finish(a);
         if (a.heldReport != null) {
             String r = a.heldReport;
             a.heldReport = null;

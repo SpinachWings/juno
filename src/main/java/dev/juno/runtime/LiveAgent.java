@@ -17,7 +17,9 @@ public final class LiveAgent {
     String token;
     Journal journal;
     /** Launch settings of the running process, to tell when /model, /effort or a project change needs a restart. */
-    String launchedModel, launchedEffort, launchedFolder;
+    String launchedModel, launchedEffort, launchedFolder, launchedKeys;
+    /** This process's clients of the host MCP servers, with the key's token (design §6.6). Gone with the process. */
+    final Map<String, HostAccess.Upstream> upstreams = new LinkedHashMap<>();
     int background;
     boolean stopRequested;
     boolean restartAfterTurn;

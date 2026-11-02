@@ -25,6 +25,3 @@ Couldn't find {{target}}: {{detail}}.
 ## already-open
 You already have a review open on {{open_target}}. Call `end_review` first, or call `start_review` on
 {{open_target}} to refresh it.
-
-## not-yet
-Reviews aren't available in this version of Juno yet, so `start_review` can't run. Tell the user.

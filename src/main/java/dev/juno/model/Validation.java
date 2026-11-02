@@ -52,6 +52,16 @@ public final class Validation {
         return errors;
     }
 
+    /** A GitLab key's second token (design §5.1). */
+    public static List<String> gitToken(Key k, boolean tokenGiven, String envName) {
+        List<String> errors = new ArrayList<>();
+        if (envName != null && !envName.isBlank() && !ENV_NAME.matcher(envName.trim()).matches())
+            errors.add("Environment variable names use letters, digits and underscores.");
+        boolean has = tokenGiven || (envName != null && !envName.isBlank()) || (k.gitToken != null && !k.gitToken.isBlank());
+        if (!has) errors.add("A GitLab key needs a git and REST token too (or the name of a variable that holds it).");
+        return errors;
+    }
+
     public static List<String> profile(Profile p, List<Profile> others) {
         List<String> errors = new ArrayList<>();
         if (p.name == null || p.name.isBlank()) errors.add("Give the profile a name.");

@@ -1,11 +1,15 @@
 package dev.juno.git;
 
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.TimeUnit;
 
 /** Local git commands Juno runs itself (no network, no tokens). */
@@ -14,25 +18,48 @@ public final class Git {
 
     /** Runs {@code git -C folder args...}; returns stdout, or throws with stderr on failure. */
     public static String run(Path folder, String... args) throws IOException {
+        return run(folder, Map.of(), 30, args);
+    }
+
+    /**
+     * The same with extra environment (a null value removes the variable) and a time limit, for what may use the
+     * network. Never put tokens in {@code args}: they'd show in process lists and error messages.
+     */
+    public static String run(Path folder, Map<String, String> env, long seconds, String... args) throws IOException {
         List<String> cmd = new ArrayList<>(List.of("git", "-C", folder.toString()));
         cmd.addAll(List.of(args));
         ProcessBuilder pb = new ProcessBuilder(cmd);
         pb.environment().put("GIT_TERMINAL_PROMPT", "0");
+        env.forEach((k, v) -> {
+            if (v == null) pb.environment().remove(k);
+            else pb.environment().put(k, v);
+        });
         Process p = pb.start();
         p.getOutputStream().close();
-        byte[] out = p.getInputStream().readAllBytes();
-        byte[] err = p.getErrorStream().readAllBytes();
+        CompletableFuture<byte[]> out = CompletableFuture.supplyAsync(() -> readAll(p.getInputStream()));
+        CompletableFuture<byte[]> err = CompletableFuture.supplyAsync(() -> readAll(p.getErrorStream()));
         try {
-            if (!p.waitFor(30, TimeUnit.SECONDS)) {
+            if (!p.waitFor(seconds, TimeUnit.SECONDS)) {
+                p.descendants().forEach(ProcessHandle::destroyForcibly);
                 p.destroyForcibly();
                 throw new IOException("git timed out");
             }
+            if (p.exitValue() != 0) throw new IOException(new String(err.get(), StandardCharsets.UTF_8).strip());
+            return new String(out.get(), StandardCharsets.UTF_8).replace("\r\n", "\n");
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new IOException("interrupted");
+        } catch (ExecutionException e) {
+            throw new IOException(e.getCause());
         }
-        if (p.exitValue() != 0) throw new IOException(new String(err, StandardCharsets.UTF_8).strip());
-        return new String(out, StandardCharsets.UTF_8).replace("\r\n", "\n");
+    }
+
+    private static byte[] readAll(InputStream in) {
+        try {
+            return in.readAllBytes();
+        } catch (IOException e) {
+            return new byte[0];
+        }
     }
 
     public static boolean isRepository(Path folder) {

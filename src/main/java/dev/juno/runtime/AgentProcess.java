@@ -56,6 +56,10 @@ public final class AgentProcess {
             }
         }
         env.putAll(provider.environment(spec));
+        spec.gitEnvironment().forEach((k, v) -> {
+            if (v == null) env.remove(k);
+            else env.put(k, v);
+        });
         Process p = pb.start();
         AgentProcess ap = new AgentProcess(p, provider.newParser(), log);
         ap.writeLog("# start " + java.time.Instant.now() + " in " + spec.workingDir());

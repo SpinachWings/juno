@@ -21,6 +21,7 @@ import dev.juno.store.AgentStore;
 import dev.juno.store.AtomicFiles;
 import dev.juno.store.Json;
 import dev.juno.store.JunoHome;
+import dev.juno.store.TokenStore;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -82,6 +83,8 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
     private final AgentStore store;
     private final JunoMcpServer mcp;
     private final Orchestration orchestration;
+    private final HostAccess host;
+    private final Reviews reviews;
     private final Map<String, LiveAgent> live = new ConcurrentHashMap<>();
     private final List<Listener> listeners = new CopyOnWriteArrayList<>();
     private final Map<String, Provider.VersionCheck> versions = new ConcurrentHashMap<>();
@@ -100,6 +103,11 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
 
     public AgentRuntime(JunoHome home, Provider provider, Supplier<Settings> settings, Runnable saveSettings,
                         SkillLibrary skills, SkillResolver skillResolver) {
+        this(home, provider, settings, saveSettings, skills, skillResolver, TokenStore.NONE);
+    }
+
+    public AgentRuntime(JunoHome home, Provider provider, Supplier<Settings> settings, Runnable saveSettings,
+                        SkillLibrary skills, SkillResolver skillResolver, TokenStore tokens) {
         this.home = home;
         this.provider = provider;
         this.settings = settings;
@@ -110,6 +118,8 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
         this.mcp = new JunoMcpServer(this);
         this.orchestration = new Orchestration(this, new dev.juno.comms.CommsStore(home.commsFile()));
         this.hooks = new HookEvents(home.hookEventsDir(), this::hookEvent);
+        this.host = new HostAccess(this, tokens);
+        this.reviews = new Reviews(this, host, home);
     }
 
     // ---------------------------------------------------------------- lifecycle
@@ -146,6 +156,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
         }
         if (!live.containsKey(Orchestration.JUNO)) createJuno();
         orchestration.started();
+        reviews.started();
         queue.sort((x, y) -> Long.compare(x.agent.statusSince, y.agent.statusSince));
         mcp.start();
         hooks.start();
@@ -187,6 +198,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
         }
         hooks.stop();
         mcp.stop();
+        reviews.stop();
         timer.shutdownNow();
         // Let them go, so nothing holds their folders open (Windows) once Juno is gone.
         long until = System.currentTimeMillis() + 3_000;
@@ -218,6 +230,14 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
 
     public Orchestration orchestration() {
         return orchestration;
+    }
+
+    public Reviews reviews() {
+        return reviews;
+    }
+
+    public HostAccess host() {
+        return host;
     }
 
     public LiveAgent live(String agentId) {
@@ -298,7 +318,10 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
             store.save(a);
             return;
         }
-        if (from.equals("user")) orchestration.fromUser(a, text, from);
+        if (from.equals("user")) {
+            orchestration.fromUser(a, text, from);
+            reviews.userAnswered(a);
+        }
         if (a.pendingSkill != null) {
             text = AgentPrompts.activateSkill(a.pendingSkill, text);
             a.pendingSkill = null;
@@ -313,6 +336,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
     public synchronized void hey(Agent a, String text) {
         LiveAgent l = live.get(a.id);
         orchestration.fromUser(a, text, "hey");
+        reviews.userAnswered(a);
         if (!l.running() || !a.turnOpen) {
             send(a, AgentPrompts.hey(text), "hey");
             return;
@@ -426,7 +450,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
         Path folder = folder(a);
         String model = effectiveModel(a, p), effort = effectiveEffort(a, p);
         if (l.running() && !a.turnOpen && (!eq(model, l.launchedModel) || !eq(effort, l.launchedEffort)
-                || !eq(folder.toString(), l.launchedFolder))) {
+                || !eq(folder.toString(), l.launchedFolder) || !eq(host.fingerprint(a), l.launchedKeys))) {
             stopProcess(l);
         }
         if (l.running()) return true;
@@ -444,13 +468,20 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
             Path run = home.agentRunDir(a.id);
             Files.createDirectories(run);
             Path sys = run.resolve("system-prompt.md");
-            AtomicFiles.writeString(sys, AgentPrompts.systemPrompt(settings.get(), a, p, project(a), folder,
-                    usesWorktree(a) ? a.branch : "", orchestration.contactsText(a)));
+            Project shown = a.review != null && reviews.reviewProject(a) != null ? reviews.reviewProject(a) : project(a);
+            AtomicFiles.writeString(sys, AgentPrompts.systemPrompt(settings.get(), a, p, shown, folder,
+                    usesWorktree(a) ? a.branch : "", orchestration.contactsText(a), host.describe(a)));
             l.token = mcp.register(a.id);
             Path mcpFile = run.resolve("mcp.json");
-            AtomicFiles.writeString(mcpFile, provider.mcpConfig(mcp.url(), l.token));
+            Map<String, String> hostServers = host.servers(a, p, mcp.hostBase());
+            AtomicFiles.writeString(mcpFile, provider.mcpConfig(mcp.url(), l.token, hostServers));
+            Path helper = run.resolve("git-credential.sh");
+            AtomicFiles.writeString(helper, dev.juno.git.GitAccess.helperScript(mcp.credentialUrl(), l.token));
             Path plugins = provider.writeSkills(run.resolve("plugins"), skillSets(a.profile));
-            List<String> allowed = new ArrayList<>(p.allowedTools);
+            // host:<action> rules are Juno's own: the proxy applies them, and the agent sees only what they allow.
+            List<String> allowed = new ArrayList<>(p.allowedTools.stream()
+                    .filter(r -> !dev.juno.comms.HostActions.isRule(r)).toList());
+            hostServers.keySet().forEach(s -> allowed.add("mcp__" + s));
             Project project = project(a);
             if (p.editsFiles && project != null) {
                 for (String cmd : project.buildAndTestCommands) {
@@ -458,7 +489,8 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
                 }
             }
             Provider.LaunchSpec spec = new Provider.LaunchSpec(exe, folder, model, effort, p.permissionMode,
-                    allowed, p.disallowedTools, p.maxTurns, p.spendLimit, sys, mcpFile, plugins, a.sessionId, a.id);
+                    allowed, disallowed(a, p), p.maxTurns, p.spendLimit, sys, mcpFile, plugins, a.sessionId, a.id,
+                    host.gitEnvironment(a, helper));
             hooks.reset(a.id);
             AgentProcess[] self = new AgentProcess[1];
             l.process = self[0] = AgentProcess.start(provider, spec,
@@ -468,6 +500,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
             l.launchedModel = model;
             l.launchedEffort = effort;
             l.launchedFolder = folder.toString();
+            l.launchedKeys = host.fingerprint(a);
             l.background = 0;
             l.lastActivity = System.currentTimeMillis();
             return true;
@@ -476,6 +509,64 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
             fail(l, "Couldn't start " + a.name + ": " + e.getMessage());
             return false;
         }
+    }
+
+    /** The profile's disallowed tools, and {@code gh} / {@code glab} for any agent without a key (design §5.1.1). */
+    List<String> disallowed(Agent a, Profile p) {
+        List<String> out = new ArrayList<>(p.disallowedTools.stream()
+                .filter(r -> !dev.juno.comms.HostActions.isRule(r)).toList());
+        if (host.keys(a).isEmpty()) {
+            for (String r : List.of("Bash(gh:*)", "Bash(glab:*)")) if (!out.contains(r)) out.add(r);
+        }
+        return out;
+    }
+
+    /** Anything needing the host without a usable key stops here, with the reason (design §5.1.1). */
+    void keyStop(LiveAgent l, String message) {
+        synchronized (this) {
+            if (l.agent.status == Status.AWAITING && l.agent.reason == Reason.KEY) return;
+            notice(l, "🔑 " + message, "bad");
+            setStatus(l, Status.AWAITING, Reason.KEY, message);
+            l.agent.unread = true;
+            store.save(l.agent);
+        }
+    }
+
+    /** A PR/MR was opened from this agent's worktree: its base branch is protected there from now on (design §7.8). */
+    void prOpened(LiveAgent l, String base) {
+        synchronized (this) {
+            Agent a = l.agent;
+            if (base.isBlank() || a.prBases.contains(base)) return;
+            a.prBases.add(base);
+            store.save(a);
+            if (usesWorktree(a) && Files.isDirectory(home.worktreeHooks(a.id))) {
+                try {
+                    Worktrees.setProtected(home.worktreeHooks(a.id), protectedBranches(a));
+                } catch (IOException e) {
+                    notice(l, "Couldn't protect " + base + " in the worktree: " + e.getMessage(), "warn");
+                }
+            }
+        }
+    }
+
+    private List<String> protectedBranches(Agent a) {
+        List<String> out = new ArrayList<>(Worktrees.baseBranches(Path.of(project(a).folder), a.baseBranch));
+        for (String b : a.prBases) if (!out.contains(b) && !b.equals(a.branch)) out.add(b);
+        return out;
+    }
+
+    /** The reviewer's next message restarts its process in the snapshot, once this turn is over (design §6.3). */
+    void restartAfterTurn(LiveAgent l, String text) {
+        l.restartAfterTurn = true;
+        l.afterRestart = text;
+    }
+
+    /** Stale snapshots can go once no process runs in them. */
+    void releaseSnapshots(LiveAgent l) {
+        Agent a = l.agent;
+        if (a.staleSnapshots.isEmpty() || a.turnOpen) return;
+        if (l.process != null && a.staleSnapshots.contains(l.launchedFolder)) stopProcess(l);
+        reviews.clean(a);
     }
 
     private void fail(LiveAgent l, String message) {
@@ -533,6 +624,10 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
                 }
                 case AgentEvent.ToolUse t -> {
                     if (!a.turnOpen) openTurn(l);
+                }
+                case AgentEvent.ToolResult t when t.error() -> {
+                    String problem = host.keyProblem(a, t.text());
+                    if (problem != null) keyStop(l, problem);
                 }
                 default -> { }
             }
@@ -595,6 +690,10 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
             a.interruptReason = why;
             a.interruptedAt = System.currentTimeMillis();
             setStatus(l, Status.AWAITING, Reason.FAILED, why);
+        } else if (a.status == Status.AWAITING && a.reason == Reason.KEY) {
+            // stays: the user has to give it a key
+        } else if (reviews.afterTurn(l)) {
+            // waiting for pipelines, or asking the user about them
         } else if (endsWithQuestion(l.lastReply)) {
             setStatus(l, Status.AWAITING, Reason.QUESTION, "");
         } else if (a.status != Status.AWAITING || a.reason != Reason.FOLDER) {
@@ -620,6 +719,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
             }
         }
         orchestration.turnEnded(l, !stoppedByUser);
+        releaseSnapshots(l);
         drainQueue();
     }
 
@@ -671,6 +771,10 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
     /** /stop: interrupts the current turn; the conversation is kept. */
     public synchronized String stop(Agent a) {
         LiveAgent l = live.get(a.id);
+        if (!a.turnOpen && a.review != null && a.review.phase != Agent.Review.Phase.READY) {
+            reviews.cancel(a, "the user stopped it");
+            return null;
+        }
         if (a.status == Status.QUEUED) {
             queue.remove(l);
             a.queuedMessage = null;
@@ -706,6 +810,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
     public synchronized String resume(Agent a) {
         LiveAgent l = live.get(a.id);
         if (a.turnOpen) return a.name + " is working.";
+        if (a.review != null && a.review.phase == Agent.Review.Phase.ASK) return "Answer the card about the pipelines first.";
         boolean failed = a.status == Status.AWAITING && a.reason == Reason.FAILED;
         if (!a.interrupted && !failed) return "There's nothing to resume: " + a.name + " wasn't interrupted.";
         String recap = AgentPrompts.recap(a, l.history(), changes(a), folder(a));
@@ -720,6 +825,10 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
         if (a.turnOpen) return "Not while " + a.name + " is working.";
         if (a.status == Status.QUEUED) return a.name + " is queued: /stop first.";
         stopProcess(l);
+        if (a.review != null) {
+            reviews.finish(a); // the review belonged to that conversation
+            releaseSnapshots(l);
+        }
         closeCurrentConversation(l);
         a.sessionId = null;
         a.conversationId = newConversationId();
@@ -949,9 +1058,12 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
         Agent a = l.agent;
         Profile p = profile(a.profile);
         Path folder = folder(a);
-        String refused = PermissionRules.refusedBy(p.disallowedTools, tool, input, folder);
+        String refused = PermissionRules.refusedBy(disallowed(a, p), tool, input, folder);
         if (refused != null) {
             notice(l, "✗ " + tool + " refused: `" + refused + "` is disallowed for " + a.profile + ".", "bad");
+            if (host.keys(a).isEmpty() && (refused.startsWith("Bash(gh") || refused.startsWith("Bash(glab"))) {
+                keyStop(l, host.noKeyMessage(a));
+            }
             return deny(AgentPrompts.result("request_permission", "disallowed",
                     Map.of("rule", refused, "profile", a.profile)));
         }
@@ -1000,7 +1112,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
             return "`" + r + "` isn't a valid rule.";
         }
         if (answer != Answer.DENY) {
-            String refused = PermissionRules.refusedBy(p.disallowedTools, pp.tool, pp.input, folder(a));
+            String refused = PermissionRules.refusedBy(disallowed(a, p), pp.tool, pp.input, folder(a));
             if (refused != null) answer = Answer.DENY;
         }
         String outcome;
@@ -1068,11 +1180,16 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
         saved(a);
     }
 
-    /** The GitHub/GitLab key; used from the agent's next start (Milestone 5 wires it in). */
+    /** The GitHub/GitLab key; used from the agent's next message (its process restarts). Answers a 🔑 stop. */
     public synchronized void setKey(Agent a, dev.juno.model.Key.Kind kind, String keyId) {
         String id = keyId == null || keyId.isBlank() ? null : keyId;
         if (kind == dev.juno.model.Key.Kind.GITHUB) a.githubKeyId = id;
         else a.gitlabKeyId = id;
+        LiveAgent l = live.get(a.id);
+        if (id != null && a.status == Status.AWAITING && a.reason == Reason.KEY) {
+            setStatus(l, Status.IDLE, null, "");
+            notice(l, "🔑 Key set. Send a message to carry on.", "good");
+        }
         saved(a);
     }
 
@@ -1128,7 +1245,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
             if (Files.isDirectory(wt) && project != null) Worktrees.remove(Path.of(project.folder), wt);
             else if (Files.isDirectory(wt)) deleteTree(wt);
             if (Files.isDirectory(home.worktreeHooks(a.id))) deleteTree(home.worktreeHooks(a.id));
-            if (Files.isDirectory(home.reviewsDir(a.id))) deleteTree(home.reviewsDir(a.id));
+            reviews.deleted(a);
             l.journal.close();
             if (Files.isDirectory(home.agentDir(a.id))) deleteTree(home.agentDir(a.id));
             Files.deleteIfExists(home.hookEventsDir().resolve(a.id + ".jsonl"));
@@ -1185,7 +1302,8 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
             }
             String why = has ? removalBlock(a) : null;
             boolean stale = has && System.currentTimeMillis() - lastTouched(a) > STALE_MS;
-            out.add(new AgentStorage(a, has, has ? Worktrees.size(wt) : 0, Worktrees.size(home.reviewsDir(a.id)),
+            out.add(new AgentStorage(a, has, has ? Worktrees.size(wt) : 0, reviews.snapshotsOf(a.id).stream()
+                            .mapToLong(Worktrees::size).sum(),
                     current, earlier, has && why == null, why, stale));
         }
         return out;
@@ -1265,6 +1383,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
         try {
             long now = System.currentTimeMillis();
             long idleLimit = Math.max(1, settings.get().system.idleTimeoutMinutes) * 60_000L;
+            reviews.tick(now);
             synchronized (this) {
                 drainQueue();
                 for (LiveAgent l : live.values()) {
@@ -1306,6 +1425,9 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
     private void cleanRun(LiveAgent l) {
         mcp.unregister(l.token);
         l.token = null;
+        synchronized (l.upstreams) {
+            l.upstreams.clear();
+        }
         Path run = home.agentRunDir(l.agent.id);
         try {
             if (Files.exists(run)) {
@@ -1318,7 +1440,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
         }
     }
 
-    private void setStatus(LiveAgent l, Status s, Reason r, String detail) {
+    void setStatus(LiveAgent l, Status s, Reason r, String detail) {
         Agent a = l.agent;
         if (a.status != s || a.reason != r) a.statusSince = System.currentTimeMillis();
         a.status = s;
@@ -1383,6 +1505,9 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
      * git repository, else the project folder, else a private empty folder. The worktree is made on first start.
      */
     public Path folder(Agent a) {
+        if (a.review != null && a.review.snapshot != null && Files.isDirectory(Path.of(a.review.snapshot))) {
+            return Path.of(a.review.snapshot); // a reviewer works in its snapshot (design §6.3)
+        }
         Project p = project(a);
         if (p == null) return home.agentHome(a.id);
         return usesWorktree(a) ? home.worktree(a.id) : Path.of(p.folder);
@@ -1419,7 +1544,8 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
             a.branch = c.branch();
             store.save(a);
         }
-        Worktrees.installHooks(repo, wt, home.worktreeHooks(a.id), Worktrees.baseBranches(repo, a.baseBranch));
+        Worktrees.installHooks(repo, wt, home.worktreeHooks(a.id), protectedBranches(a));
+        Worktrees.setIdentity(wt, host.identity(a, project(a)));
         String branch = Worktrees.currentBranch(wt);
         if (!branch.isEmpty() && !branch.equals(a.branch)) {
             a.branch = branch;
@@ -1521,6 +1647,21 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
     @Override
     public JunoMcpServer.Reply call(String agentId, String tool, JsonNode args) {
         return orchestration.call(agentId, tool, args);
+    }
+
+    @Override
+    public com.fasterxml.jackson.databind.node.ArrayNode hostTools(String agentId, String server) {
+        return host.tools(agentId, server);
+    }
+
+    @Override
+    public ObjectNode hostCall(String agentId, String server, String tool, JsonNode args) {
+        return host.call(agentId, server, tool, args);
+    }
+
+    @Override
+    public String gitCredential(String agentId, String request) {
+        return host.gitCredential(agentId, request);
     }
 
     @Override

@@ -67,7 +67,7 @@ public class Agent {
     public String interruptReason = "";
     public long interruptedAt;
     public long created;
-    /** GitHub and GitLab keys (Keys tab ids), one of each at most; null for none. Used from Milestone 5. */
+    /** GitHub and GitLab keys (Keys tab ids), one of each at most; null for none (design §5.1.1). */
     public String githubKeyId;
     public String gitlabKeyId;
     /** A message waiting for a free slot while the agent is Queued (design §3), and who sent it. */
@@ -85,8 +85,14 @@ public class Agent {
     public String reportDraft;
     /** A finished report held while a review is open (design §4.3); sent by {@code end_review}. */
     public String heldReport;
-    /** Between {@code start_review} and {@code end_review} (Milestone 5). */
+    /** Between {@code start_review} and {@code end_review}. */
     public boolean reviewOpen;
+    /** The open review (design §6.3); null for none. */
+    public Review review;
+    /** Snapshots to remove once no process runs in them. */
+    public List<String> staleSnapshots = new ArrayList<>();
+    /** Base branches of PRs/MRs opened from this agent's worktree: protected too (design §7.8). */
+    public List<String> prBases = new ArrayList<>();
     /** The last summary reported to Juno, for the context summary. */
     public String lastReport = "";
     /** Notices for the agent (link changes, loop guard, notes to Juno): sent with its next message, never on their own. */
@@ -97,6 +103,51 @@ public class Agent {
     public int hop;
     /** Juno only: reports that arrived while she worked, sent as one digest when she is next idle (design §4.3). */
     public List<String> pendingReports = new ArrayList<>();
+
+    /** A review from {@code start_review} to {@code end_review} (design §6.3). */
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public static class Review {
+        public enum Phase { WAITING, ASK, PREPARING, READY }
+
+        /** What the user is asked: all of them can also be cancelled. */
+        public enum Ask {
+            NEEDS_PERSON("Continue waiting"), FAILED("Wait for a new commit"), LIMIT("Keep waiting"), SNAPSHOT("Try again");
+
+            public final String goLabel;
+
+            Ask(String goLabel) {
+                this.goLabel = goLabel;
+            }
+        }
+
+        /** "#42" or "!42". */
+        public String target = "";
+        public Key.Kind kind = Key.Kind.GITHUB;
+        public String host = "";
+        public String repo = "";
+        public int number;
+        public String projectId;
+        public String headSha = "";
+        public String baseSha = "";
+        public String baseRef = "";
+        public Phase phase = Phase.WAITING;
+        public Ask ask;
+        public String askText;
+        /** After "Wait for a new commit": the current head doesn't count. */
+        public boolean waitNewCommit;
+        public long waitingSince;
+        public long nextPoll;
+        /** Polls in a row that failed. */
+        public int troubles;
+        public boolean noPipelines;
+        public String checks = "";
+        public String optionalFailed = "";
+        /** The snapshot folder, once made. */
+        public String snapshot;
+        public long snapshotAt;
+        /** The user has answered since the snapshot was made: the reviewer may post. */
+        public boolean approved;
+    }
 
     /** A task from Juno or /assign (design §4.2). */
     @JsonIgnoreProperties(ignoreUnknown = true)
@@ -158,6 +209,9 @@ public class Agent {
     public String statusText() {
         if (status == Status.AWAITING && reason != null) return reason.icon + " " + status.label;
         if (status == Status.QUEUED && queuePlace > 0) return status.label + " · " + ordinal(queuePlace);
+        if (status == Status.WAITING && statusDetail != null && !statusDetail.isBlank()) {
+            return "⏳ " + statusDetail + " · " + Math.max(0, (System.currentTimeMillis() - statusSince) / 60_000) + " min";
+        }
         return status.label;
     }
 }

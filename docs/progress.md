@@ -1,5 +1,109 @@
 # Progress
 
+## Milestone 5: GitHub/GitLab, PRs and reviews. Done for GitHub; GitLab not run (2026-11-02)
+
+### Done
+- **Keys on agents** (`git.GitAccess`, `runtime.HostAccess`): every process gets the git environment of §5.1.1. The user's
+  credential helpers are cleared (an empty `credential.helper` through `GIT_CONFIG_*`, read last), the SSH agent and
+  token variables are removed, git can't prompt. With a key: `GIT_ALLOW_PROTOCOL=file:https`, SSH remotes of the key's
+  host rewritten to HTTPS, and a per-process credential helper (`run/git-credential.sh`, deleted with the process) that
+  asks Juno's `/git-credential` with the process's token, so the key's token is never on disk or in the agent's
+  environment. The key's git identity is set with `config --worktree`. Changing an agent's key restarts its process at
+  the next message.
+- **No key, no host:** `GIT_ALLOW_PROTOCOL=file`, no host MCP servers, `gh` / `glab` disallowed for any profile.
+  `git` refusals in tool output, a refused `gh` / `glab` and `start_review` stop at **Awaiting 🔑** with the reason;
+  setting a key answers it. Juno's own fetches follow the same rules (`GitAccess.forJuno`).
+- **Keys tab:** a GitLab key's second token (field, vault entry `<id>-git`, `env:` form), and **Test** for real
+  (`HostAccess.test`): MCP server, token, repository, PRs, runs, check runs, statuses, and write checks that can't succeed
+  (a ref with an all-zero sha, a review on PR 0), naming the missing permission from `x-accepted-github-permissions`.
+- **Host MCP proxy** (§6.6: `/host/github`, `/host/gitlab` in `JunoMcpServer`; `comms.McpClient`, `comms.HostActions`,
+  `HostAccess.call`): `tools/list` shows only what the profile may do; every call is classified by tool and arguments
+  and refused unless allowed. Anything unknown is refused. The token stays in Juno.
+- **Coder flow:** the existing prompt now works end to end. Opening a PR/MR protects its base branch in that worktree
+  (`Agent.prBases`, `Worktrees.setProtected`). `/checkforcomments` needed no code.
+- **Reviews** (`runtime.Reviews`, `comms.Pipelines`, `comms.GitHubApi`, `comms.GitLabApi`, `git.Snapshots`): targets
+  (number, link, agent's name), every refusal, polling (60 s for 10 minutes, then 2 minutes, up to the limit) with
+  **Waiting ⏳** ("⏳ pipelines on #8 · 12 min"), every outcome of §6.3, snapshots at
+  `~/.juno/review/<agent id>-<pr>-<commit>` (local commit, or a fetch under `refs/juno/review/…`; submodules, LFS, lock
+  retries), the process restarting in the snapshot with its conversation kept, `end_review`, leftovers after 24 hours,
+  Storage. A review survives a restart. Pipeline questions have a card in the pane and buttons in the inbox.
+- **Unit tests** (159 in all, `mvn verify`): `HostLogicTest` (what the proxy lets through on both hosts, what checks mean,
+  GitHub's answers, the Test lines), `GitAccessTest` (real git: no-key refusals, cleared helpers, SSH rewrite, nothing in
+  git config, snapshots from a local commit and from a fetch), `ReviewsTest` (end to end with `FakeClaude`, a fake REST
+  client and a fake MCP server: every outcome, refusals, held reports, the credential helper through real
+  `git credential fill`, the proxy per profile, posting rules, thread ownership).
+
+### Checked live (Claude Code 2.1.314, haiku / low, scratch `JUNO_HOME` and `CLAUDE_CONFIG_DIR`, `SpinachWings/terrible-workout-tracker`, GitHub only) with `dev.juno.ui.ReviewScreens`
+- **Test button:** every line passed (46 MCP tools, public repository). A token *missing* a permission wasn't tried live.
+- **No key:** `git push` refused by git, the agent stopped at 🔑 with the message, nothing reached the remote.
+- **Coder:** opened PR #8 from `spike/m5` through the proxy and messaged its linked reviewer once.
+- **Reviewer:** the message started the review; snapshot detached at the head, the process ran in it; comments shown
+  with ❓ and nothing posted; after the user's approval one `COMMENTED` review (inline on the line, summary) anchored to the
+  head, both with the marker. Snapshot and refs gone after `end_review`.
+- **`/checkforcomments`:** listed the thread and changed nothing until told; after a decision: commit, push, a reply with
+  the marker, thread left unresolved.
+- **Re-review:** found the commit in its old summary, reviewed only what changed, replied, **resolved its own thread**
+  (GraphQL shows `isResolved: true`), new summary.
+- **Pipeline wait:** on a commit pushed just before, a real 65 s in ⏳ until CI passed ("2 passed"), then the snapshot. A
+  review dropped by the user posted nothing.
+- PR #8 is closed unmerged with its history; branch `spike/m5` deleted. The token appears nowhere in what the run wrote.
+- Screens by eye: the board's review states, the pipeline card, the inbox, both Keys forms, the 🔑 stop.
+
+### Not verified live
+- **Everything on GitLab** (`GitLabApi`, its tool names and argument names such as `note` and `verdict`): from its
+  documentation; no sandbox. Expect corrections at the first real run.
+- GitHub: needs-a-person (`action_required`, a first-time fork), a failed pipeline, a *required* check, the wait limit, a
+  private repository, `<name>.ghe.com`, submodules and LFS in a snapshot. All are unit tested with made-up answers, except
+  private repositories and `ghe.com`.
+- The refusal of approve / merge / close and of someone else's thread was tested through the proxy with a fake host, and
+  live only in that the reviewer's and coder's tool lists left them out. The Test button's write checks were seen
+  passing, not failing.
+- `Bash` tool output as the trigger for 🔑 "key refused" (`Authentication failed`), as opposed to "no key".
+
+### Changed in approved text
+- `profiles/reviewer.md` has a new first line under Starting: a linked agent's "PR opened" message is the request to
+  review. Without it haiku waited to be asked, twice, which contradicts §6.4. **Please read it.**
+- `results/host.md` is new (the proxy's refusals). `results/start_review.md` lost `not-yet`.
+
+### Decisions (not in the spec)
+1. **Per-action rules are `host:<action>`** in a profile's allowed / disallowed tools (`host:read`, `open`, `reply`, `review`,
+   `resolve`, `approve`, `request-changes`, `merge`, `close`, `edit`, or `host:*`). They're Juno's own: never passed to the
+   CLI, which gets the whole server (`mcp__github`), since the proxy already decides. No host rule = no host servers.
+2. **Server-side posting rules, beyond the prompt.** For profiles allowed `host:review`, the proxy refuses review, reply and
+   resolve unless a review is open with its snapshot and **the user has sent a message since the snapshot**, and refuses a
+   commit other than the reviewed one. This can't check *what* was approved; it stops posting before anyone answered.
+   Replies by coders aren't gated: their approval is the prompt's job.
+3. **The marker is added by the proxy** when a comment lacks one, so thread ownership and `/checkforcomments` can rely on it.
+4. **Review-comment approval is the reviewer's ❓ question**, not a new card (it needs free text: edits, drops). The inbox's
+   question item covers it. This replaces the Milestone 4 note that proposals might be the model.
+5. **"No pipelines":** none on the commit and no workflows in the repository → at once. Workflows but nothing on the
+   commit yet → 2 minutes first, since a run can start late; then none. Required checks that haven't reported (from
+   rulesets) keep it waiting.
+6. **GitLab:** a job with `allow_failure` is optional, every other job required, whatever
+   `only_allow_merge_if_pipeline_succeeds` says. A manual job with `allow_failure` is ignored.
+7. **Which key:** the host of the project's `origin`; with no `origin`, the agent's only key. Project remotes hold no host.
+8. **Tokens are read** when a process first needs them and for each poll, not only at agent start: polls run with no process.
+   The proxy keeps them only for the process's life. Juno's own fetches pass the token as an HTTP header in that one git
+   child's environment.
+9. **A reviewer's snapshot failure** asks (Try again / Cancel) as a fourth question. `/stop` on a Waiting agent cancels its
+   review; `/new` ends it silently; `/resume` refuses while a pipeline question is open.
+10. **A message from the user during a review doesn't take away Juno's task:** it's an answer about the comments.
+    Found by a test: the report would have been lost.
+11. **`ToolCatalog`** lists the `host:` rules; the Keys form's test repository defaults to the first project's remote.
+12. `JunoHome.reviewsDir(agent)` became `reviewDir()` to match §6.3's folder names; Storage sums by name prefix.
+
+### Known issues
+- On haiku `/checkforcomments` and the reviewer's output are looser than the prompts ask (no `file:line` list, Done rather than
+  ❓ after the list); nothing was posted early. Worth another look on the profiles' real models.
+- `start_review` reports `not-found` when given a name with typos; it can't suggest one.
+- The first-run setup still doesn't show the token permissions (from Milestone 5a; for Milestone 7).
+- If `claude` isn't on PATH (seen in your PowerShell), agents fail unless Settings → Claude Code path has the full path.
+
+### For the next milestone (6)
+- Nothing here touches the notepad. `AgentRuntime.folder(agent)` now returns the snapshot during a review, which a note view
+  showing an agent's folder should expect.
+- `ReviewScreens` (test sources) drives real runs; the `tell` scenario types into a pane. It needs `JUNO_SANDBOX_TOKEN`.
+
 ## Milestone 5a: GitHub/GitLab capability check. Done for GitHub, docs-only for GitLab (2026-11-02)
 
 Spike, no product code. **GitHub**: verified live against the sandbox `SpinachWings/terrible-dashboard` (a public

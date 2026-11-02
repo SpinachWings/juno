@@ -29,6 +29,9 @@ import java.util.regex.Pattern;
  *
  * <p>Every tool of §4.4. The app decides who may call what ({@link Calls#refusal}); {@code tools/list} shows an agent
  * only the tools it may call, and a call it may not make is refused here, whatever its prompt says.
+ *
+ * <p>Also, under {@code /host/<server>}, the proxy to the host's MCP servers (§6.6), and {@code /git-credential} for the
+ * per-process git credential helper (§5.1.1); the same tokens identify the agent.
  */
 public final class JunoMcpServer {
     /** What the server asks the app to do. Calls may block (the user answers in the pane). */
@@ -44,6 +47,15 @@ public final class JunoMcpServer {
 
         /** Placeholders in tool descriptions (e.g. {@code report_length}). */
         Map<String, ?> promptValues();
+
+        /** The host MCP server's tools this agent may see. */
+        ArrayNode hostTools(String agentId, String server);
+
+        /** Forwards a call to the host's MCP server if the agent's profile allows this action. */
+        ObjectNode hostCall(String agentId, String server, String tool, JsonNode args);
+
+        /** Git's credential request, answered with this agent's key; "" for none. */
+        String gitCredential(String agentId, String request);
     }
 
     /** A tool's answer; {@code error} marks refusals. */
@@ -89,6 +101,8 @@ public final class JunoMcpServer {
         });
         http.setExecutor(pool);
         http.createContext("/mcp", this::handle);
+        http.createContext("/host/", this::handleHost);
+        http.createContext("/git-credential", this::handleCredential);
         http.start();
     }
 
@@ -100,6 +114,16 @@ public final class JunoMcpServer {
 
     public String url() {
         return "http://127.0.0.1:" + http.getAddress().getPort() + "/mcp";
+    }
+
+    /** The proxy's base: a server's URL is this plus its name (design §6.6). */
+    public String hostBase() {
+        return "http://127.0.0.1:" + http.getAddress().getPort() + "/host/";
+    }
+
+    /** Where the git credential helper asks (design §5.1.1). */
+    public String credentialUrl() {
+        return "http://127.0.0.1:" + http.getAddress().getPort() + "/git-credential";
     }
 
     /** A new token for one process of {@code agentId}. Never logged or shown. */
@@ -127,6 +151,82 @@ public final class JunoMcpServer {
                 case "POST" -> post(ex, agent);
                 case "DELETE" -> send(ex, 200, null);
                 default -> send(ex, 405, null);
+            }
+        }
+    }
+
+    private String agentOf(HttpExchange ex) {
+        String auth = ex.getRequestHeaders().getFirst("Authorization");
+        return auth != null && auth.startsWith("Bearer ") ? agentByToken.get(auth.substring(7).trim()) : null;
+    }
+
+    private void handleHost(HttpExchange ex) throws IOException {
+        try (ex) {
+            String agent = agentOf(ex);
+            if (agent == null) {
+                send(ex, 401, null);
+                return;
+            }
+            if (ex.getRequestMethod().equals("DELETE")) {
+                send(ex, 200, null);
+                return;
+            }
+            if (!ex.getRequestMethod().equals("POST")) {
+                send(ex, 405, null);
+                return;
+            }
+            String server = ex.getRequestURI().getPath().substring("/host/".length());
+            JsonNode m;
+            try {
+                m = Json.MAPPER.readTree(ex.getRequestBody().readAllBytes());
+            } catch (IOException e) {
+                send(ex, 400, error(null, -32700, "Parse error"));
+                return;
+            }
+            JsonNode id = m.get("id");
+            if (id == null || id.isNull()) {
+                send(ex, 202, null);
+                return;
+            }
+            JsonNode params = m.path("params");
+            ObjectNode r = switch (m.path("method").asText()) {
+                case "initialize" -> {
+                    ObjectNode o = Json.MAPPER.createObjectNode();
+                    o.put("protocolVersion", params.path("protocolVersion").asText("2025-06-18"));
+                    o.putObject("capabilities").putObject("tools");
+                    ObjectNode info = o.putObject("serverInfo");
+                    info.put("name", server);
+                    info.put("version", "juno-proxy");
+                    yield result(id, o);
+                }
+                case "ping" -> result(id, Json.MAPPER.createObjectNode());
+                case "tools/list" -> {
+                    ObjectNode o = Json.MAPPER.createObjectNode();
+                    o.set("tools", calls.hostTools(agent, server));
+                    yield result(id, o);
+                }
+                case "tools/call" -> result(id, calls.hostCall(agent, server, params.path("name").asText(), params.path("arguments")));
+                default -> error(id, -32601, "Method not found");
+            };
+            send(ex, 200, r);
+        }
+    }
+
+    private void handleCredential(HttpExchange ex) throws IOException {
+        try (ex) {
+            String agent = agentOf(ex);
+            if (agent == null || !ex.getRequestMethod().equals("POST")) {
+                send(ex, 401, null);
+                return;
+            }
+            byte[] b = calls.gitCredential(agent, new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8))
+                    .getBytes(StandardCharsets.UTF_8);
+            ex.getResponseHeaders().set("Content-Type", "text/plain");
+            ex.sendResponseHeaders(200, b.length == 0 ? -1 : b.length);
+            if (b.length > 0) {
+                try (OutputStream o = ex.getResponseBody()) {
+                    o.write(b);
+                }
             }
         }
     }

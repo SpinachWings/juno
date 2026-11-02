@@ -188,7 +188,23 @@ public final class Worktrees {
         Git.run(worktree, "config", "--worktree", "core.hooksPath", hooksDir.toString().replace('\\', '/'));
     }
 
-    /** Updates the protected branches of an installed worktree (e.g. when a PR/MR base is known: Milestone 5). */
+    /** The key's git identity, in this worktree only (design §5.1.1); null clears it. */
+    public static void setIdentity(Path worktree, String[] nameAndEmail) throws IOException {
+        for (int i = 0; i < 2; i++) {
+            String key = i == 0 ? "user.name" : "user.email";
+            if (nameAndEmail != null) {
+                Git.run(worktree, "config", "--worktree", key, nameAndEmail[i]);
+            } else {
+                try {
+                    Git.run(worktree, "config", "--worktree", "--unset", key);
+                } catch (IOException e) {
+                    // wasn't set
+                }
+            }
+        }
+    }
+
+    /** Updates the protected branches of an installed worktree (when a PR/MR's base is known, design §7.8). */
     public static void setProtected(Path hooksDir, List<String> protectedBranches) throws IOException {
         AtomicFiles.writeString(hooksDir.resolve("protected-branches"), String.join("\n", protectedBranches) + "\n");
     }

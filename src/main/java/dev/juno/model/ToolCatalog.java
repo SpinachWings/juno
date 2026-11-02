@@ -4,7 +4,7 @@ import java.util.List;
 
 /**
  * The tools a profile can allow or disallow, for the tools reference in Settings → Agent profiles (design §5.4).
- * Later milestones add the host (GitHub / GitLab) MCP tools once their names are verified (§13).
+ * The host (GitHub / GitLab) entries are per action, because Juno's proxy decides by action (design §6.6).
  */
 public final class ToolCatalog {
     public enum Group {
@@ -53,7 +53,18 @@ public final class ToolCatalog {
             new Tool("mcp__juno__set_link", Group.JUNO, "Orchestrator only. Open or close a link between agents."),
             new Tool("mcp__juno__start_review", Group.JUNO, "Reviewers. Wait for a PR/MR's pipelines, then open a "
                     + "review snapshot. Any profile that allows it can review."),
-            new Tool("mcp__juno__end_review", Group.JUNO, "Reviewers. Remove the review snapshot."));
+            new Tool("mcp__juno__end_review", Group.JUNO, "Reviewers. Remove the review snapshot."),
+            new Tool("host:read", Group.HOST, "Read PRs/MRs, diffs, files, commits, threads, checks and pipelines."),
+            new Tool("host:open", Group.HOST, "Open a PR/MR."),
+            new Tool("host:reply", Group.HOST, "Reply to a review thread."),
+            new Tool("host:review", Group.HOST, "Post a review: inline comments and a summary, COMMENT only. Only "
+                    + "during a review (start_review), and after the user has answered."),
+            new Tool("host:resolve", Group.HOST, "Resolve review threads the agent started itself."),
+            new Tool("host:approve", Group.HOST, "Approve a PR/MR."),
+            new Tool("host:request-changes", Group.HOST, "Submit a review that requests changes."),
+            new Tool("host:merge", Group.HOST, "Merge a PR/MR."),
+            new Tool("host:close", Group.HOST, "Close a PR/MR."),
+            new Tool("host:edit", Group.HOST, "Edit a PR/MR's title, description, base or other state."));
 
     private ToolCatalog() {}
 
@@ -65,7 +76,7 @@ public final class ToolCatalog {
     public static String syntaxHelp() {
         return "Rules go one per line. A bare name (Read) allows that tool. Bash(prefix:*) matches shell commands "
                 + "starting with the prefix. mcp__<server>__<tool> names a tool of an MCP server. Disallowed rules "
-                + "always win over allowed ones. GitHub / GitLab tools are added in Milestone 5, once their names "
-                + "are verified; until then type them by hand if you know them.";
+                + "always win over allowed ones. host:<action> rules say what the agent may do on GitHub / GitLab "
+                + "through Juno; host:* allows every action. Without one the agent gets no GitHub / GitLab tools.";
     }
 }
