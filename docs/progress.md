@@ -1,10 +1,29 @@
 # Progress
 
-## Milestone 5a: GitHub/GitLab capability check. Partly done (2026-11-02)
+## Milestone 5a: GitHub/GitLab capability check. Done for GitHub, docs-only for GitLab (2026-11-02)
 
-Spike, no product code. **GitHub**: live against the sandbox (`SpinachWings/terrible-workout-tracker`) with a
-fine-grained PAT, read-only calls plus `tools/list` and schemas. **GitLab**: docs only (no sandbox). **Not done:**
-every write (see "Not verified live"). Scripts were throwaway and are not kept.
+Spike, no product code. **GitHub**: verified live against the sandbox `SpinachWings/terrible-dashboard` (a public
+repository with no workflows; the first sandbox, `terrible-workout-tracker`, was the wrong repository for the token) with a
+fine-grained PAT (Contents and Pull requests read and write). **GitLab**: docs only (no sandbox, per your call).
+Scripts were throwaway and are not kept. Everything the live run created was removed or closed (PR #11 stays, closed,
+with its review history; branch `spike/5a` deleted).
+
+### Live run (GitHub, 2026-11-02), all through the MCP server
+`create_branch` (spike/5a) → `create_or_update_file` → `create_pull_request` (#11) → `pull_request_review_write`
+`create` with `commitID` → `add_comment_to_pending_review` (path, line 2, RIGHT) → `pull_request_review_write`
+`submit_pending` (`event: COMMENT`, body = summary) → `pull_request_read` `get_review_comments` →
+`add_reply_to_pull_request_comment` → `pull_request_review_write` `resolve_thread` → `get_check_runs` / `get_status` →
+`update_pull_request` `state: closed`. Every step worked. What the table does not say:
+- The inline comment is anchored to the commit given as `commitID` (the review's `commit_id` shows it).
+- `get_review_comments` returns the **thread** id (`PRRT_…`, for `resolve_thread`) but the reply tool wants the
+  **numeric comment id**, which is in the comment's `html_url` (`…#discussion_r<id>`). Juno parses it.
+- The reply and the review summary are posted as the key's account; Juno's marker ("🤖 name (profile):") is just text.
+- A PR with no checks and no statuses answers `get_check_runs` `{"total_count":0}` and `get_status`
+  `{"state":"pending","total_count":0}`. **"pending" with zero statuses means no pipelines**, not "waiting": Juno must
+  look at `total_count` (and at `actions_list` for runs) before it treats `pending` as waiting.
+- Branch deletion has no MCP tool (REST `DELETE /git/refs/heads/<branch>`); not needed by the product.
+- `main` here has no ruleset (`/rules/branches/main` answers `[]`) and no workflow runs, so required checks and
+  `action_required` were read but not observed with real data.
 
 ### Capability table
 
@@ -32,13 +51,13 @@ Extra toolsets by URL path `/mcp/x/<toolset>` (e.g. `/mcp/x/actions` adds 4 tool
 `X-MCP-Toolsets` header form did not work in my calls. Tools can be limited per call with `X-MCP-Tools` /
 `X-MCP-Exclude-Tools` (header names listed in the server's CORS headers; not tested).
 
-### Not verified live (needs writes the sandbox didn't allow)
-- Branch/file creation was refused (token has no Contents write); opening a PR from an existing branch was then
-  blocked by the session's permission classifier, so **no PR was opened, nothing was posted**. Pending: opening a PR,
-  pending review + inline comment + submit, reply, resolve, and check runs/status on a PR head that has runs.
-- Whether the sandbox workflow (`.github/workflows/ci.yml`) runs on `pull_request`.
-- Everything about GitLab (no sandbox): names come from a mirror of the official tools page (19.5) and are unconfirmed.
-- Real GitLab "needs approval" / manual-job states.
+### Still not verified
+- Everything on GitLab (names are from a mirror of the official tools page, GitLab 19.5; no sandbox).
+- A GitHub PR head **with** workflow runs: required checks (rulesets / branch protection / GraphQL `isRequired`),
+  `action_required` runs and failed jobs were not seen with data (the sandbox has no workflows).
+- Whether check runs on a **private** repository are readable with Contents / Pull requests / Actions / Commit
+  statuses read (the sandbox repository is public). The Test button should find out.
+- The `<name>.ghe.com` URL.
 
 ### Spec changes (applied to `docs/design.md` on your OK, 2026-11-02)
 1. **Host MCP proxy** (new §6.6): agents' `mcp.json` points at a proxy in Juno's MCP server, which holds the key's token
@@ -52,11 +71,12 @@ Extra toolsets by URL path `/mcp/x/<toolset>` (e.g. `/mcp/x/actions` adds 4 tool
    Milestone 5 (TODO there).
 5. `<name>.ghe.com` URL still unverified.
 
-### Second token (2026-11-02)
-A second sandbox token had Metadata/read access only: branch, file and PR creation all returned 403 "Resource not
-accessible by personal access token". So the live write checks (open PR, pending review + inline comment + submit,
-reply, resolve, checks on a PR head) are **still open**; they need Contents and Pull requests write on the sandbox repo.
-Nothing was created on the sandbox.
+### Token problems on the way (for the Keys help)
+Four fine-grained tokens failed every write with `403 Resource not accessible by personal access token` (reads
+worked): they were scoped to `terrible-dashboard`, not the repository being tested, so writes were refused while reads
+of a public repository still worked. A read that works therefore proves nothing about write access; the Test button
+should try a harmless write-check, and the 403's `x-accepted-github-permissions` header names the missing permission
+(e.g. `contents=write`), which is worth showing in the Test result. Rewrite to the right repository fixed it.
 
 ## Milestone 4: Juno and communication. Done (2026-11-01)
 

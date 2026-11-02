@@ -135,7 +135,7 @@ without a message from you, and both agents and you are told why. A message from
 
 | Host | Token type | Permissions |
 | --- | --- | --- |
-| GitHub | **Fine-grained PAT** (resource owner = the repository's owner; select the repositories) or a classic PAT with `repo` | Repository permissions: **Metadata** read; **Contents** read & write (read is enough for reviewers); **Pull requests** read & write; **Actions** read; **Commit statuses** read (fine-grained tokens have no "Checks" permission; whether check runs on a private repository are readable with these is checked by the Test button); optional **Administration** read (lets Juno read branch protection to find required checks; rulesets are readable without it). An organisation may need to approve the token. |
+| GitHub | **Fine-grained PAT** (resource owner = the repository's owner; select the repositories) or a classic PAT with `repo` | Repository permissions (verified: Contents and Pull requests read & write are enough to open PRs, review, reply and resolve): **Metadata** read; **Contents** read & write (read is enough for reviewers); **Pull requests** read & write; **Actions** read; **Commit statuses** read (fine-grained tokens have no "Checks" permission; whether check runs on a private repository are readable with these is checked by the Test button); optional **Administration** read (lets Juno read branch protection to find required checks; rulesets are readable without it). An organisation may need to approve the token. |
 | GitLab | **Two tokens** (see below) | **MCP:** a *fine-grained* personal access token with the **MCP tool** resource and **Execute** permission. Legacy PATs, project and group tokens are rejected by the MCP server. **Git and REST:** a normal personal access token (or project/group token) with `api`, `read_repository` and `write_repository` (reviewers: `api`, `read_repository`). |
 
 - A **GitLab key holds two tokens**: the MCP token above, and the git/REST token (git over HTTPS, pipeline polling,
@@ -364,6 +364,8 @@ re-review; people's threads are left for you or them.
   - **Failed** → no review; **Awaiting decision ⚠** with the failed jobs: **Wait for a new commit / Cancel**.
   - **New commits pushed while waiting** → waits again on the new head.
   - **No pipelines configured** → reviews straight away; the summary says nothing checked the build or tests.
+    (GitHub reports a commit with no checks as status `pending` with zero statuses and zero check runs, so "none" is
+    decided by the counts and the repository's workflow runs, never by the word `pending`.)
   - **Wait limit reached** → **Awaiting decision ⚠**: **Keep waiting / Cancel**.
 - **Snapshot:** a temporary **detached worktree** at the head commit (`~/.juno/review/<reviewer>-<pr>-<commit>`); the
   reviewer's process runs in it (restart, conversation kept) and is told the PR/MR, head and base commits and
@@ -648,6 +650,7 @@ Besides profiles' system prompts, all natural-language text Juno sends lives as 
 options of the review tool, so Juno filters per action in a proxy; required checks and "needs approval" come from REST;
 GitLab's MCP server takes a fine-grained PAT only, so a GitLab key holds two tokens (§5.1).
 
-**Still to verify live:** posting a review (pending review, inline comment, submit), reply, resolve and opening a PR on
-GitHub (needs a sandbox token with Contents and Pull requests write); everything on GitLab (names are from its
-documentation); the `<name>.ghe.com` MCP URL.
+**Verified live on GitHub** (Milestone 5a): opening a PR, a pending review with an inline comment anchored to a commit and
+a submitted summary, reply, resolve, close, and check/status reads. **Still to verify:** everything on GitLab (names
+are from its documentation); a GitHub PR with workflow runs (required checks, "needs approval"); check runs on a
+private repository; the `<name>.ghe.com` MCP URL.
