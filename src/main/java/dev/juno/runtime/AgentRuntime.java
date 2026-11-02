@@ -207,7 +207,8 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
 
     /** Juno and every agent. */
     public List<Agent> all() {
-        return live.values().stream().map(l -> l.agent).sorted((x, y) -> Long.compare(x.created, y.created)).toList();
+        return live.values().stream().map(l -> l.agent).sorted(java.util.Comparator.<Agent>comparingLong(a -> a.created)
+                .thenComparing(a -> a.name)).toList(); // the same order even for agents made in the same millisecond
     }
 
     /** Juno, the orchestrator (design §3). */

@@ -126,7 +126,8 @@
     `/assign` goes at once (you typed the task), and anything else already has a card.
   - 15 seconds is fixed, not a setting (`Orchestration.UNDO_MS`).
   - After a restart a task still counting down doesn't go by itself: it becomes an ordinary approval card.
-  - New prompt text: `results/assign_task.md` `undo-window`; `tools/assign_task.md` mentions the wait.
+  - New prompt text: `results/assign_task.md` `undo-window`; `tools/assign_task.md` and `profiles/orchestrator.md`
+    mention the wait.
   - Checked with the real CLI (`JunoScreens undo`, haiku / low): the first task undone and nothing reached bob after
     the window passed; the second went by itself and its report reached Juno.
   - Also: one test (`/assign`'s note) raced with the report that delivers the note; it now checks what reached Juno.

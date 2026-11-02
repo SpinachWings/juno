@@ -3,8 +3,9 @@ package dev.juno.comms;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 
 /**
- * Something Juno asked for that waits for the user (design §4.1, §4.2): an assignment (unnamed, or a fresh start) or a
- * link she suggested. Held by the server, saved, and answered from the card, the inbox, or /approve and /deny.
+ * Something Juno asked for that waits for the user (design §4.1, §4.2): an assignment (unnamed, or a fresh start), a
+ * task for an agent the user named during its undo window, or a link she suggested. Held by the server, saved, and
+ * answered from the card, the inbox, or /approve and /deny.
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class Proposal {

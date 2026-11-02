@@ -69,9 +69,10 @@ finished, asked, reported, failed. Cleared by clicking into or scrolling the pan
    she gets a one-line note).
 2. **Named, through Juno:** "juno, give bob the login bug" (Juno writes the task), or `/assign<name> <task>` in her
    pane (delivered by the app, no Juno tokens; she's told in one line and tracks the result). "Named" is judged from
-   the words of your message, so it can be wrong ("don't give it to bob" names bob): a task Juno writes for an agent
-   you named waits 15 seconds on a card with **Undo / Send now** (or `/deny`, `/approve`) before it goes. `/assign`
-   goes at once.
+   the words of your message, so it can be wrong ("don't give it to bob" names bob): under the default setting below,
+   a task Juno writes for an agent you named waits 15 seconds on a card with **Undo / Send now** (or `/deny`,
+   `/approve`) before it goes. Nothing reaches the agent during the wait. Under *Never* it goes at once, under *Always*
+   it gets an approval card, and `/assign` always goes at once.
 3. **Unnamed, through Juno:** "get someone to fix the login bug". Juno **proposes** an agent — approval card with the
    agent, why (profile, status, context use) and the task, **Approve / Edit / Choose another / Cancel** (or `/approve`,
    `/deny`). Held by the server until you decide. Setting **Juno asks before assigning**: *Only when I didn't name
@@ -107,7 +108,7 @@ server refuses it otherwise. Orchestrator-only tools work only for Juno.
 | `send_message(to, text)` | every profile | Delivers a message into the target's conversation. Refused without a link. |
 | `report(text)` | every profile | Sends a result or question to whoever assigned the current task. |
 | `request_folder(reason)` | every profile | Asks you to give the agent a project (§7.7). |
-| `assign_task(to, task, fresh)` | orchestrator only | Hands an agent a task (held for approval when required); its result is reported back automatically. |
+| `assign_task(to, task, fresh)` | orchestrator only | Hands an agent a task (held for approval when required, or sent after a short wait in which you can undo it, §4.2); its result is reported back automatically. |
 | `get_agent_output(name, lines)` | orchestrator only | Recent output of an agent. |
 | `get_agent_context(name)` | orchestrator only | An agent's context summary (§8.2). |
 | `set_link(a, b, open, requested_by_user)` | orchestrator only | Opens/closes a link; an unrequested open is held for your approval. |
@@ -381,8 +382,8 @@ All worktrees of a repository (your checkout, agents' worktrees, snapshots) shar
 - **Pane top bar:** status (+ reason tag or ⏳), unread dot, name, profile, project and branch (or "no folder"), model
   and effort; resume, stop, maximise, split, **⋯ options menu** (§7.10). The agent's colour outlines the pane.
 - **Toolbar:** title, **+ New agent**, board / notes toggle, **inbox**, **usage-limit meter**, Settings.
-- **Inbox:** count and list of everything waiting on you — assignment proposals, link suggestions, fresh-start
-  approvals, permission requests 🔐, folder requests and repositories to clone 📁, missing keys 🔑, review comments to
+- **Inbox:** count and list of everything waiting on you — assignment proposals, tasks you can still undo, link suggestions,
+  fresh-start approvals, permission requests 🔐, folder requests and repositories to clone 📁, missing keys 🔑, review comments to
   approve, `/checkforcomments` decisions, questions ❓, failed or stuck pipelines ⚠, failures and interruptions ⏸.
   Each item: agent, reason, one-line summary, its answer buttons where it has them, else "go to pane". Items disappear
   when answered anywhere. A quiet **Waiting** section lists agents Waiting ⏳ (agent, PR/MR, minutes).

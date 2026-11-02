@@ -59,6 +59,7 @@ public final class SystemTab extends ScrollPane {
         });
         Label asksLabel = new Label("Juno asks before assigning");
         Ui.withTip(asksLabel, "When Juno picks an agent for a task you gave her, she shows you her choice first. "
+                + "With the first option, a task for an agent you named waits 15 seconds so you can undo it. "
                 + "A fresh start always asks, whatever this says.");
         box.getChildren().addAll(Ui.row(asksLabel, asks), tell);
         GridPane g = new GridPane();
