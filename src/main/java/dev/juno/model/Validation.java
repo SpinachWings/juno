@@ -17,6 +17,11 @@ public final class Validation {
     private Validation() {}
 
     public static List<String> project(Project p, List<Project> others) {
+        return project(p, others, "");
+    }
+
+    /** {@code notesFolder}: a project folder may not contain or sit inside it (design §9). */
+    public static List<String> project(Project p, List<Project> others, String notesFolder) {
         List<String> errors = new ArrayList<>();
         if (p.name == null || p.name.isBlank()) errors.add("Give the project a name.");
         else if (others.stream().anyMatch(o -> o != p && !o.id.equals(p.id) && o.name.equalsIgnoreCase(p.name.trim())))
@@ -31,6 +36,10 @@ public final class Validation {
         }
         if (p.remote != null && !p.remote.isBlank() && !REMOTE.matcher(p.remote.trim()).matches())
             errors.add("The remote must look like owner/repo (GitHub) or group/project (GitLab).");
+        if (p.folder != null && !p.folder.isBlank() && notesFolder != null && !notesFolder.isBlank()
+                && overlap(p.folder, notesFolder))
+            errors.add("The project folder can't contain or sit inside the notes folder (" + notesFolder.trim()
+                    + "): agents never get your notes.");
         return errors;
     }
 
@@ -79,6 +88,11 @@ public final class Validation {
     }
 
     public static List<String> system(SystemSettings s) {
+        return system(s, List.of());
+    }
+
+    /** {@code projects}: the notes folder may not contain or sit inside any project folder (design §9). */
+    public static List<String> system(SystemSettings s, List<Project> projects) {
         List<String> errors = new ArrayList<>();
         if (s.freshStartThreshold < 1 || s.freshStartThreshold > 100) errors.add("Fresh-start threshold is 1–100 %.");
         if (s.reportLength < 100) errors.add("Report length must be at least 100 characters.");
@@ -86,6 +100,39 @@ public final class Validation {
         if (s.pipelineWaitLimitMinutes < 1) errors.add("Pipeline wait limit must be at least 1 minute.");
         if (s.maxAgentsWorking < 1) errors.add("Max agents working at once must be at least 1.");
         if (s.idleTimeoutMinutes < 1) errors.add("Idle process timeout must be at least 1 minute.");
+        if (s.notesFolder != null && !s.notesFolder.isBlank()) {
+            try {
+                Path notes = Path.of(s.notesFolder.trim());
+                if (Files.exists(notes) && !Files.isDirectory(notes))
+                    errors.add("The notes folder is a file, not a folder: " + s.notesFolder.trim());
+            } catch (InvalidPathException e) {
+                errors.add("The notes folder path isn't valid: " + s.notesFolder.trim());
+            }
+            for (Project p : projects)
+                if (p.folder != null && !p.folder.isBlank() && overlap(p.folder, s.notesFolder))
+                    errors.add("The notes folder can't contain or sit inside the folder of project " + p.name
+                            + " (" + p.folder.trim() + "): agents never get your notes.");
+        }
         return errors;
+    }
+
+    /** True when one folder is the other or lies inside it. Unreadable paths never overlap (other checks report them). */
+    public static boolean overlap(String a, String b) {
+        try {
+            Path x = canonical(Path.of(a.trim()));
+            Path y = canonical(Path.of(b.trim()));
+            return x.startsWith(y) || y.startsWith(x);
+        } catch (InvalidPathException | java.io.IOException e) {
+            return false;
+        }
+    }
+
+    /** The real path of the folder, or of its nearest existing parent with the rest appended. */
+    private static Path canonical(Path p) throws java.io.IOException {
+        Path abs = p.toAbsolutePath().normalize();
+        Path existing = abs;
+        while (existing != null && !Files.exists(existing)) existing = existing.getParent();
+        if (existing == null) return abs;
+        return existing.toRealPath().resolve(existing.relativize(abs)).normalize();
     }
 }

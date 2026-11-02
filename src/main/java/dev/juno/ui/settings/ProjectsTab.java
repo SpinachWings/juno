@@ -91,7 +91,7 @@ public final class ProjectsTab extends BorderPane {
         p.remote = remote.getText().trim();
         p.buildAndTestCommands = Arrays.stream(commands.getText().split("\\R"))
                 .map(String::trim).filter(s -> !s.isEmpty()).toList();
-        List<String> problems = Validation.project(p, ctx.settings.projects);
+        List<String> problems = Validation.project(p, ctx.settings.projects, ctx.settings.system.notesFolder);
         if (!problems.isEmpty()) {
             Ui.problems(getScene().getWindow(), problems);
             return;

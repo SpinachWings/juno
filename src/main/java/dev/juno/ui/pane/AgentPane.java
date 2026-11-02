@@ -58,6 +58,8 @@ public final class AgentPane {
     private final VBox cards = new VBox(6);
     private final TextArea input = new TextArea();
     private final boolean juno;
+    private final List<javafx.scene.Node> boardOnly = new ArrayList<>();
+    private boolean embedded;
     private String shownPermission;
     private String shownProposals = "";
     private boolean folderCardShown;
@@ -96,10 +98,12 @@ public final class AgentPane {
         top = new HBox(6, status, unread, name, where, Ui.grow(), modelLabel, resume, stop, right, down, maximise);
         if (!juno) top.getChildren().add(hide); // Juno is always on the board (design §3)
         top.getChildren().add(menu);
+        boardOnly.addAll(List.of(right, down, maximise));
+        if (!juno) boardOnly.add(hide);
         top.setAlignment(Pos.CENTER_LEFT);
         top.getStyleClass().add("pane-top");
         top.setOnMouseClicked(e -> {
-            if (e.getClickCount() == 2 && e.getTarget() instanceof javafx.scene.Node n && !isButton(n)) maximise();
+            if (e.getClickCount() == 2 && !embedded && e.getTarget() instanceof javafx.scene.Node n && !isButton(n)) maximise();
         });
         this.options = new OptionsPanel(ctx, agent, host, this::toggleOptions);
         this.options.setVisible(false);
@@ -208,6 +212,18 @@ public final class AgentPane {
     /** Re-reads the agent's state into the bar (e.g. after the board changed which pane is maximised). */
     public void refreshNow() {
         refresh();
+    }
+
+    /**
+     * Shown beside the notes instead of on the board (design §9): the same pane, without the buttons that arrange the
+     * board (split, maximise, hide).
+     */
+    public void setEmbedded(boolean embedded) {
+        this.embedded = embedded;
+        for (javafx.scene.Node n : boardOnly) {
+            n.setVisible(!embedded);
+            n.setManaged(!embedded);
+        }
     }
 
     public void toggleOptions() {

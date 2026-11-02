@@ -216,7 +216,7 @@ public final class FirstRun {
         p.remote = projectRemote.getText().trim();
         p.buildAndTestCommands = java.util.Arrays.stream(projectCommands.getText().split("\\R"))
                 .map(String::trim).filter(s -> !s.isEmpty()).toList();
-        List<String> problems = Validation.project(p, ctx.settings.projects);
+        List<String> problems = Validation.project(p, ctx.settings.projects, ctx.settings.system.notesFolder);
         if (!problems.isEmpty()) {
             Ui.problems(stage, problems);
             return false;

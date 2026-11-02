@@ -42,6 +42,9 @@ public final class BoardView implements PaneHost {
     private final Map<String, SetupForm> setups = new LinkedHashMap<>();
     private final List<Runnable> listeners = new ArrayList<>();
     private String maximised;
+    /** The agent whose pane is shown beside the notes right now; the board shows a note in its cell instead. */
+    private String borrowed;
+    private Runnable showRequested = () -> {};
     private String lastUsed = BoardLayout.JUNO;
     private int setupCounter;
     private AgentPane current;
@@ -90,6 +93,40 @@ public final class BoardView implements PaneHost {
         return a == null ? null : panes.get(a.id);
     }
 
+    /** What to do before the board is asked to show an agent (the main window switches back from the notes). */
+    public void onShowRequested(Runnable r) {
+        showRequested = r;
+    }
+
+    /**
+     * Lends the agent's pane to the notepad (design §9): the same pane, output and input, taken out of its cell, which
+     * says where it went. Returns the pane, or null if that agent doesn't exist any more.
+     */
+    public AgentPane borrow(Agent a) {
+        if (a == null) return null;
+        String before = borrowed;
+        borrowed = a.id;
+        if (a.id.equals(maximised)) maximised = null;
+        AgentPane p = pane(a);
+        rebuild();
+        if (before != null && !before.equals(a.id)) paneById(before).ifPresent(x -> x.setEmbedded(false));
+        p.setEmbedded(true);
+        return p;
+    }
+
+    /** Takes the lent pane back into its cell. */
+    public void release() {
+        if (borrowed == null) return;
+        String id = borrowed;
+        borrowed = null;
+        rebuild();
+        paneById(id).ifPresent(x -> x.setEmbedded(false));
+    }
+
+    private java.util.Optional<AgentPane> paneById(String id) {
+        return java.util.Optional.ofNullable(panes.get(id));
+    }
+
     /** Called after every change of what is shown (the agent list refreshes from it). */
     public void onChanged(Runnable r) {
         listeners.add(r);
@@ -117,6 +154,7 @@ public final class BoardView implements PaneHost {
 
     /** Shows the agent's pane (back where it was if hidden), brings it into view and focuses its input. */
     public void showAgent(Agent a) {
+        showRequested.run();
         if (maximised != null && !maximised.equals(a.id)) maximised = null;
         if (!layout.shown(a.id)) layout.show(a.id);
         AgentPane p = pane(a);
@@ -149,6 +187,7 @@ public final class BoardView implements PaneHost {
         layout.remove(a.id);
         panes.remove(a.id);
         if (a.id.equals(maximised)) maximised = null;
+        if (a.id.equals(borrowed)) borrowed = null;
         rebuild();
         persist();
     }
@@ -288,6 +327,16 @@ public final class BoardView implements PaneHost {
     }
 
     private Node cell(String id) {
+        if (id.equals(borrowed)) {
+            String who = id.equals(BoardLayout.JUNO) ? "Juno" : ctx.runtime.agents().stream()
+                    .filter(x -> x.id.equals(id)).map(x -> x.name).findFirst().orElse("This agent");
+            javafx.scene.control.Label l = new javafx.scene.control.Label(who + " is beside your notes.\n"
+                    + "Switch back to the board to see it here.");
+            l.getStyleClass().add("dim");
+            StackPane holder = new StackPane(l);
+            holder.getStyleClass().add("setup-cell");
+            return holder;
+        }
         if (id.equals(BoardLayout.JUNO)) return pane(ctx.runtime.juno()).root();
         if (id.startsWith(SETUP)) return setups.get(id).root();
         Agent a = ctx.runtime.agents().stream().filter(x -> x.id.equals(id)).findFirst().orElse(null);

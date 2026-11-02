@@ -1,5 +1,72 @@
 # Progress
 
+## Milestone 6: notepad. Done (2026-11-02)
+
+### Done
+- **Board / Notes toggle** (`app.MainWindow`): switching to Notes swaps the board area for `ui.notes.NotesView`; switching back
+  saves every edited note and gives the lent agent pane back. **+ New agent**, and anything that asks the board to show an
+  agent (inbox "Go to pane", the agent list), switch back to the board first (`BoardView.onShowRequested`).
+- **Note view** (`ui.notes.NotesView`, `NoteTab`): the notes folder's tree (folders first, then notes; `.md`, `.markdown`,
+  `.txt` only; dot-files and folders such as `.git` / `.obsidian` hidden), tabs, a Markdown editor (light colouring of headings,
+  fences, quotes, lists, code, bold) with a live preview rendered like agent messages (`ui.pane.MarkdownPreview`, reusing
+  `MarkdownText`, so code blocks have their copy button and tables work). Edit / Split / Preview toggle.
+- **Create / rename / move / delete** notes and folders (`store.NotesFolder`, atomic writes, nothing outside the folder
+  reachable, `..`, absolute paths and symlinks out are refused): "+ Note" / "+ Folder", right-click menu (Open, New note
+  here, New folder here, Rename, Move to…, Delete…), F2 / Delete / Enter, drag a row onto a folder to move it. Open tabs
+  follow a rename or move; a delete closes its tabs. Delete asks and says how many items a folder holds.
+- **Saving:** a note is saved 0.7 s after typing stops, on Ctrl+S, when its tab is closed, on switching to the board and on
+  closing the window. A note whose file changed on disk is never overwritten unasked: a clean tab reloads (on ⟳ or when the
+  note is opened again); an edited one shows "changed on disk" with **Load the disk version** / **Keep mine**.
+- **Overlap checks** (`model.Validation.overlap`, `Validation.system(s, projects)`, `Validation.project(p, others, notes)`): saving a
+  notes folder inside a project folder, around one, or equal to one is refused in Settings → System; saving a project the same
+  way is refused in Settings → Projects and in the first-run project step. Paths are compared as real paths (symlinks,
+  `..`, case on Windows), and a folder that doesn't exist yet counts by its nearest existing parent. If it's there anyway
+  (settings edited by hand), the notepad shows the reason and an "Open settings" button instead of the tree.
+- **One agent beside the notes:** the picker "Agent beside the notes" (none, Juno or any agent) lends that agent's pane
+  from the board (`BoardView.borrow` / `release`): the same `AgentPane`, so the same output, input, permission cards and
+  ⋯ menu. Its board cell shows "<name> is beside your notes". Split / maximise / hide are hidden while it's there
+  (`AgentPane.setEmbedded`). Leaving the notes, choosing another agent or deleting the agent gives it back.
+- **Remembered** in `~/.juno/notes.json` (`store.NotesState`): open tabs and the active one (dropped if the notes folder
+  changed), the view mode and the agent beside the notes.
+- **Unit tests** (171 in all, `mvn verify`): `NotesTest` (tree, create / rename / move / delete, name rules, escaping the
+  folder, refusing a non-UTF-8 file, no temp files left, both overlap checks incl. a shared name prefix).
+
+### Checked live (no Claude Code needed) with `dev.juno.ui.NotesScreens` (test sources), scratch `JUNO_HOME`, scratch notes folder
+`java -cp "target/classes;target/test-classes;<cp>" dev.juno.ui.NotesScreens <scratch dir> <output dir>` writes a PNG per
+step: the board; Notes with no folder set (reason + Open settings); the tree; a note in Split view; typing changing the
+preview and the file on disk 1.6 s later; three tabs; Juno's pane beside the notes (it was the board's pane: `/help`
+typed through the board's handle appeared in it) and back on the board with that output; Edit and Preview only; the
+tabs and the agent coming back on the second visit; a clean note following a change on disk; the conflict banner with
+the disk left alone; the overlap message.
+
+### Not verified
+- Dragging a tree row onto a folder (no way to synthesise a drag here; the move it calls is tested, and "Move to…" is the
+  same call). The Rename / Move / Delete dialogs and the context menu weren't driven (their file operations are tested).
+- A real agent working beside the notes (Juno's idle pane was used); the pane is the same object, so nothing depends on it.
+- A very large note (the preview re-renders the whole note 120 ms after the last keystroke).
+
+### Decisions (not in the spec)
+1. **Which files:** `.md`, `.markdown`, `.txt` are listed and opened; other files stay on disk, unseen. A note that isn't UTF-8
+   is refused with a message. New notes get `.md` unless the name has a note extension; renaming keeps a note's extension.
+2. **Delete is permanent** (after a confirmation), not a trash. Names can't contain slashes or `< > : " | ? *`, can't start with a
+   dot or end with a dot or space.
+3. **Autosave** instead of a Save button (Ctrl+S saves at once); the tab shows ● while unsaved.
+4. **The notes folder isn't created for you:** if it doesn't exist the view offers "Create it".
+5. **Overlap also refuses equal folders**, and applies when saving either side; it doesn't look at `~/.juno` itself.
+6. **The agent beside is the board's pane lent for the time:** only while the notepad is showing; the picker's choice is
+   remembered and lent again on the next visit. Juno is in the picker (she is an agent with a pane).
+7. **Edit / Split / Preview** applies to all tabs and is remembered. Split is the default.
+8. `ui.notes` holds the notepad; `ui.pane.MarkdownPreview` is the only public hook into the Markdown renderer.
+
+### Known issues
+- No file watcher: changes made outside Juno are picked up on ⟳, on opening the note again and when saving.
+- The editor has no undo across a reload, no search and no list auto-continuation.
+- The preview doesn't follow the editor's scroll position.
+
+### For the next milestone (7)
+- The first-run setup's notes step doesn't check overlap itself (no project exists yet); the project step does.
+- `ScreenshotTool` doesn't include the notes view; use `NotesScreens`.
+
 ## Milestone 5: GitHub/GitLab, PRs and reviews. Done for GitHub; GitLab not run (2026-11-02)
 
 ### Done

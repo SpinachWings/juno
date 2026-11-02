@@ -40,6 +40,8 @@ public final class JunoHome {
     /** Review snapshots, {@code review/<agent id>-<pr>-<commit>} (design §6.3). */
     public Path reviewDir() { return root.resolve("review"); }
     public Path layoutFile() { return root.resolve("layout.json"); }
+    /** The notepad's open tabs and view (design §9). */
+    public Path notesStateFile() { return root.resolve("notes.json"); }
     /** Links and proposals held for approval (design §4.1, §4.2). */
     public Path commsFile() { return root.resolve("comms.json"); }
 }

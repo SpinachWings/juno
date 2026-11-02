@@ -237,3 +237,26 @@
 .inbox-item { -fx-padding: 6; -fx-background-color: -juno-raised; -fx-border-color: -juno-line; }
 .button.inbox-busy { -fx-border-color: -juno-warn; -fx-text-fill: -juno-warn; }
 .cards-scroll, .cards-scroll > .viewport { -fx-background-color: transparent; -fx-background: transparent; -fx-padding: 0; }
+
+/* ===== Notepad (Milestone 6) ===== */
+.notes-view { -fx-background-color: -juno-bg; }
+.notes-bar { -fx-background-color: -juno-panel; -fx-border-color: -juno-line; -fx-border-width: 0 0 1 0; }
+.notes-tree, .notes-tree .tree-cell { -fx-background-color: -juno-panel; -fx-background: -juno-panel; }
+.notes-tree .tree-cell { -fx-text-fill: -juno-text; -fx-padding: 3 4 3 4; }
+.notes-tree .tree-cell:filled:hover { -fx-background-color: -juno-raised; }
+.notes-tree .tree-cell:filled:selected { -fx-background-color: -juno-select; -fx-text-fill: -juno-bright; }
+.notes-tree .tree-cell.notes-folder { -fx-text-fill: -juno-magenta; }
+.notes-tree .tree-disclosure-node .arrow { -fx-background-color: -juno-dim; }
+.split-pane { -fx-background-color: -juno-bg; -fx-padding: 0; }
+.split-pane > .split-pane-divider { -fx-background-color: -juno-line; -fx-padding: 0 1 0 1; }
+.editor { -fx-background-color: -juno-bg; -fx-padding: 6 10 6 10; -fx-font-family: "Share Tech Mono", "Consolas", monospace; -fx-font-size: 13px; }
+.editor .text { -fx-fill: -juno-text; }
+.editor .caret { -fx-stroke: -juno-blue; }
+.editor .selection { -fx-fill: -juno-select; }
+.editor .text.ed-head { -fx-fill: -juno-blue; }
+.editor .text.ed-fence { -fx-fill: -juno-dim; }
+.editor .text.ed-quote { -fx-fill: -juno-dim; }
+.editor .text.ed-list { -fx-fill: -juno-magenta; }
+.editor .text.ed-code { -fx-fill: -juno-string; }
+.editor .text.ed-bold { -fx-fill: -juno-bright; }
+.tab-pane > .tab-header-area > .headers-region > .tab .tab-label { -fx-text-fill: -juno-text; }

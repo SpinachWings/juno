@@ -7,6 +7,7 @@ import dev.juno.ui.Ui;
 import dev.juno.ui.board.BoardView;
 import dev.juno.ui.board.FilterList;
 import dev.juno.ui.board.Inbox;
+import dev.juno.ui.notes.NotesView;
 import dev.juno.ui.pane.AgentPane;
 import java.util.List;
 import javafx.application.Platform;
@@ -32,6 +33,8 @@ public final class MainWindow {
     private final BoardView board;
     private final FilterList filter;
     private final Inbox inbox;
+    private final NotesView notesView;
+    private final BorderPane boardArea;
 
     public MainWindow(AppContext ctx, Stage stage) {
         this.ctx = ctx;
@@ -39,23 +42,30 @@ public final class MainWindow {
         this.board = new BoardView(ctx);
         this.filter = new FilterList(ctx, board);
         this.inbox = new Inbox(ctx, board);
+        this.notesView = new NotesView(ctx, board);
 
         Label logo = new Label("JUNO");
         logo.getStyleClass().add("logo");
 
-        Button add = Ui.button("+ New agent", board::addAgent);
-        Ui.withTip(add, "Splits the pane you used last and asks for the new agent's setup in the new cell.");
-
         ToggleGroup view = new ToggleGroup();
         ToggleButton boardToggle = new ToggleButton("Board");
-        // TODO(Milestone 6): the notepad.
         ToggleButton notes = new ToggleButton("Notes");
+        Button add = Ui.button("+ New agent", () -> {
+            boardToggle.setSelected(true);
+            board.addAgent();
+        });
+        Ui.withTip(add, "Splits the pane you used last and asks for the new agent's setup in the new cell.");
+
         boardToggle.setToggleGroup(view);
         notes.setToggleGroup(view);
         boardToggle.setSelected(true);
-        notes.setDisable(true);
-        Ui.withTip(notes, "The notepad arrives in Milestone 6.");
-        view.selectedToggleProperty().addListener((o, a, b) -> { if (b == null) a.setSelected(true); });
+        Ui.withTip(notes, "Your notes: a file tree, Markdown editor with live preview, and one agent beside them.");
+        view.selectedToggleProperty().addListener((o, a, b) -> {
+            if (b == null) a.setSelected(true);
+            else showNotes(b == notes);
+        });
+        board.onShowRequested(() -> boardToggle.setSelected(true));
+        stage.addEventHandler(javafx.stage.WindowEvent.WINDOW_HIDING, e -> notesView.flush());
 
         ToggleButton agentsToggle = new ToggleButton("Agents");
         agentsToggle.setSelected(true);
@@ -71,7 +81,7 @@ public final class MainWindow {
         bar.setAlignment(Pos.CENTER_LEFT);
         bar.getStyleClass().add("toolbar-bar");
 
-        BorderPane boardArea = new BorderPane(board.root());
+        boardArea = new BorderPane(board.root());
         boardArea.setLeft(filter.root());
         filter.root().visibleProperty().bind(agentsToggle.selectedProperty());
         filter.root().managedProperty().bind(agentsToggle.selectedProperty());
@@ -84,6 +94,17 @@ public final class MainWindow {
             @Override public void rateLimit(AgentEvent.RateLimit r) { Platform.runLater(() -> showUsage(r)); }
         });
         if (ctx.runtime.agents().isEmpty()) board.addAgent();
+    }
+
+    /** Switches between the board and the notepad; leaving the notepad saves it and gives the lent pane back. */
+    private void showNotes(boolean notes) {
+        if (notes) {
+            root.setCenter(notesView.root());
+            notesView.show();
+        } else {
+            notesView.leave();
+            root.setCenter(boardArea);
+        }
     }
 
     /** The pane last shown or used, if any (used by the screenshot tools). */

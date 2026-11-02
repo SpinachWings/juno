@@ -81,7 +81,6 @@ public final class SystemTab extends ScrollPane {
         box.getChildren().add(Ui.row(notes, Ui.button("Browse…", () ->
                 Ui.chooseFolder(getScene().getWindow(), "Notes folder", notes.getText())
                         .ifPresent(f -> notes.setText(f.getAbsolutePath())))));
-        // TODO(Milestone 6): refuse a notes folder inside a project folder, or the reverse (design §9).
 
         box.getChildren().add(Ui.subheading("Storage"));
         box.getChildren().add(new StorageSection(ctx));
@@ -143,7 +142,7 @@ public final class SystemTab extends ScrollPane {
         s.idleTimeoutMinutes = idle.getValue();
         s.notesFolder = notes.getText().trim();
         s.firstRunDone = ctx.settings.system.firstRunDone;
-        List<String> problems = Validation.system(s);
+        List<String> problems = Validation.system(s, ctx.settings.projects);
         if (!problems.isEmpty()) {
             Ui.problems(getScene().getWindow(), problems);
             return;
