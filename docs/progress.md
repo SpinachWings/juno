@@ -39,7 +39,7 @@
   status (still can't be hidden).
 - **Panes**: tasks, agent messages and reports are shown open ("› Juno → bob: task", "message from jim (tester)");
   notices fold into one "notices" block; broadcasts show as yours. Cards scroll once they'd take half the pane.
-- **Unit tests** (106 in all, `mvn verify`): `CommsTest` (end to end through the MCP server with `FakeClaude`, a
+- **Unit tests** (110 in all, `mvn verify`): `CommsTest` (end to end through the MCP server with `FakeClaude`, a
   test-only stand-in for Claude Code that speaks stream-json, logs what reached it and can call Juno's tools):
   Juno herself and after a restart, tool access, links and their announcements, contacts in the system prompt, links
   after a restart and on deletion, Juno's link rules and suggestions, the loop guard and its reset, an unnamed task
@@ -107,12 +107,29 @@
     process it started to end.
 
 ### Known issues
-- The "named" check can be fooled ("don't give it to bob" names bob), so a card can be skipped when you meant one.
+- The "named" check can still be fooled ("don't give it to bob" names bob); the undo window below is what catches it,
+  and only if you see the card within the 15 seconds.
+- If you undo while Juno is still finishing her turn, her reply can still say the task is on its way: she hears about
+  the undo with her next message.
 - The regression check for decision 14 in `CommsTest` passes with or without the fix (`FakeClaude` doesn't hit the
   same timing); the fix was confirmed with the real CLI.
 - Notes to Juno wait for her next message: if nothing reaches her, she doesn't see them (by design, decision 1).
 - From earlier milestones: drag-to-swap gesture not driven, Delete dialogs not driven, no bold face in Share Tech
   Mono, `Notification` hook not exercised.
+
+### Changes after review (same session)
+- **Undo window for named agents** (your call; `docs/design.md` §4.2 updated). A task Juno writes for an agent the
+  server judged you named now waits **15 seconds** on a card with Undo / Send now (`/deny`, `/approve`, or the inbox)
+  before it goes, because "named" is only a guess from your words. Nothing reaches the agent during the wait, so an
+  undo costs it nothing; Juno gets the existing `[Cancelled]` notice. It's a `Proposal` with `sendAt` set. Decisions:
+  - The window applies only under "Only when I didn't name the agent". **Never** stays immediate (your own choice),
+    `/assign` goes at once (you typed the task), and anything else already has a card.
+  - 15 seconds is fixed, not a setting (`Orchestration.UNDO_MS`).
+  - After a restart a task still counting down doesn't go by itself: it becomes an ordinary approval card.
+  - New prompt text: `results/assign_task.md` `undo-window`; `tools/assign_task.md` mentions the wait.
+  - Checked with the real CLI (`JunoScreens undo`, haiku / low): the first task undone and nothing reached bob after
+    the window passed; the second went by itself and its report reached Juno.
+  - Also: one test (`/assign`'s note) raced with the report that delivers the note; it now checks what reached Juno.
 
 ### For the next milestone (5)
 - `start_review` is in `Orchestration.call` (TODO there). Set `Agent.reviewOpen` when a review starts; `report` and

@@ -65,6 +65,7 @@ class CommsTest {
         SkillLibrary lib = new SkillLibrary(home);
         rt = new AgentRuntime(home, provider, () -> settings, () -> store.save(settings), lib, new SkillResolver(lib));
         rt.start();
+        rt.orchestration().undoMs = 0; // the undo window has its own tests
         commands = new PaneCommands(rt);
     }
 
@@ -335,6 +336,78 @@ class CommsTest {
         assertTrue(juno.notices.contains("[Approved] Bob Smith gets the task in its current conversation instead."));
     }
 
+    /** Juno on the fake CLI, after a message from the user that names bob. */
+    private Agent bobNamed(long undoMs) throws Exception {
+        runtime();
+        rt.orchestration().undoMs = undoMs;
+        Agent bob = rt.create("bob", "tester", null, null);
+        rt.send(rt.juno(), "don't give the docs to bob", "user");
+        waitUntil(() -> rt.juno().status == Agent.Status.DONE);
+        return bob;
+    }
+
+    @Test
+    void aTaskForAnAgentTheUserNamedCanBeUndone() throws Exception {
+        Agent bob = bobNamed(60_000);
+        Agent juno = rt.juno();
+        assertEquals("It goes to bob in 60 seconds, continuing its conversation, unless the user undoes it. If they do, "
+                + "a message tells you. Otherwise its result will be reported to you.",
+                text(call(juno, "assign_task", "{\"to\":\"bob\",\"task\":\"write the docs\"}")));
+        assertTrue(rt.orchestration().proposals().get(0).sendAt > 0);
+        assertNull(bob.task, "nothing reaches the agent during the window");
+        assertEquals(PaneCommands.Outcome.Sent.class, commands.handle(juno, "/deny").getClass());
+        assertTrue(rt.orchestration().proposals().isEmpty());
+        assertTrue(juno.notices.contains("[Cancelled] The user cancelled the task for bob."));
+        assertNull(bob.task);
+        assertEquals("", log(bob));
+    }
+
+    @Test
+    void aTaskForAnAgentTheUserNamedGoesByItselfWhenTheTimeIsUp() throws Exception {
+        Agent bob = bobNamed(300);
+        Agent juno = rt.juno();
+        call(juno, "assign_task", "{\"to\":\"bob\",\"task\":\"write the docs\"}");
+        waitUntil(() -> log(bob).contains("[Task from Juno]\nwrite the docs"));
+        assertTrue(rt.orchestration().proposals().isEmpty());
+        assertEquals("write the docs", bob.task.gist);
+        assertFalse(String.join(" ", juno.notices).contains("[Approved]"), "she was already told it would go");
+    }
+
+    @Test
+    void sendNowSkipsTheWaitAndNeverHasNoWindow() throws Exception {
+        Agent bob = bobNamed(60_000);
+        Agent juno = rt.juno();
+        call(juno, "assign_task", "{\"to\":\"bob\",\"task\":\"first\"}");
+        commands.handle(juno, "/approve");
+        waitUntil(() -> log(bob).contains("first"));
+        waitUntil(() -> bob.status == Agent.Status.DONE);
+        settings.system.assignApproval = AssignApproval.NEVER;
+        assertTrue(text(call(juno, "assign_task", "{\"to\":\"bob\",\"task\":\"second\"}")).startsWith("Delivered to bob"));
+        assertTrue(rt.orchestration().proposals().isEmpty());
+    }
+
+    @Test
+    void anAgentDeletedDuringTheWindowGetsNothingAndARestartAsksInstead() throws Exception {
+        Agent bob = bobNamed(200);
+        call(rt.juno(), "assign_task", "{\"to\":\"bob\",\"task\":\"gone\"}");
+        rt.delete(bob, false);
+        assertTrue(rt.orchestration().proposals().isEmpty());
+        Thread.sleep(400); // the timer finds nothing to send
+        assertTrue(rt.juno().notices.contains("[Cancelled] The user cancelled the task for bob."));
+
+        Agent jim = rt.create("jim", "tester", null, null);
+        rt.orchestration().undoMs = 60_000;
+        rt.send(rt.juno(), "give jim the docs", "user");
+        waitUntil(() -> rt.juno().status == Agent.Status.DONE);
+        call(rt.juno(), "assign_task", "{\"to\":\"jim\",\"task\":\"after restart\"}");
+        rt.shutdown();
+        runtime();
+        Proposal p = rt.orchestration().proposals().get(0);
+        assertEquals(0, p.sendAt, "it no longer goes by itself");
+        assertTrue(p.askAssign);
+        assertNotNull(jim);
+    }
+
     @Test
     void aFreshStartForAnAgentWithNoConversationNeedsNoApproval() throws Exception {
         runtime();
@@ -395,11 +468,10 @@ class CommsTest {
         assertEquals(PaneCommands.Outcome.Sent.class, commands.handle(juno, "/assignbob tidy the readme").getClass());
         waitUntil(() -> log(bob).contains("[Task from Juno, written by the user]\ntidy the readme"));
         assertTrue(bob.task.byUser);
-        assertTrue(juno.notices.contains("[Note] The user assigned bob via /assign: tidy the readme. Its result will be "
-                + "reported to you."));
-        // The report starts Juno's turn and carries the note with it.
+        // The note starts no turn of its own: the report starts Juno's turn and carries it.
         waitUntil(() -> log(juno).contains("[Report from bob"));
-        assertTrue(log(juno).indexOf("[Note] The user assigned bob") < log(juno).indexOf("[Report from bob"));
+        assertTrue(log(juno).startsWith("[Note] The user assigned bob via /assign: tidy the readme. Its result will be "
+                + "reported to you.\n\n[Report from bob"), log(juno));
         assertEquals("/assign works only in Juno's pane.", ((PaneCommands.Outcome.Said) commands.handle(bob, "/assignbob x")).text());
     }
 

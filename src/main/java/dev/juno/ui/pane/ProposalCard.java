@@ -18,8 +18,8 @@ import javafx.util.StringConverter;
 
 /**
  * An approval card in Juno's pane (design §4.1, §4.2): an assignment with Approve / Edit / Choose another / Cancel, a
- * fresh start with Start fresh / Continue instead / Cancel (both when Juno chose the agent and starts it fresh), or a
- * link she suggests with Link / Don't link.
+ * fresh start with Start fresh / Continue instead / Cancel (both when Juno chose the agent and starts it fresh), a task
+ * for an agent you named counting down with Undo / Send now, or a link she suggests with Link / Don't link.
  */
 public final class ProposalCard {
     private final AgentRuntime runtime;
@@ -33,6 +33,7 @@ public final class ProposalCard {
         this.after = after;
         card.getStyleClass().add("card-proposal");
         if (p.kind == Proposal.Kind.LINK) link();
+        else if (p.sendAt > 0) countdown();
         else assign();
     }
 
@@ -52,6 +53,26 @@ public final class ProposalCard {
         Button yes = Ui.primary("Link", () -> done(o().approveLink(p.id)));
         Button no = Ui.button("Don't link", () -> done(o().decline(p.id)));
         card.getChildren().addAll(title, why, new HBox(8, yes, no), Ui.dim("or /approve, /deny"));
+    }
+
+    /** The task goes by itself when the time is up (the runtime's timer); the numbers here are only for show. */
+    private void countdown() {
+        Label title = title("");
+        Runnable tick = () -> title.setText("→ " + name(p.agentId) + " gets this task in "
+                + Math.max(0, (p.sendAt - System.currentTimeMillis() + 999) / 1000) + " s");
+        tick.run();
+        javafx.animation.Timeline t = new javafx.animation.Timeline(
+                new javafx.animation.KeyFrame(javafx.util.Duration.millis(250), e -> tick.run()));
+        t.setCycleCount((int) Math.max(1, (p.sendAt - System.currentTimeMillis()) / 250 + 1));
+        t.play();
+        Label because = Ui.dim("You named " + name(p.agentId) + " in your message, so Juno didn't ask. Not what you meant? Undo.");
+        because.setWrapText(true);
+        Label task = new Label(p.task);
+        task.setWrapText(true);
+        task.getStyleClass().add("proposal-task");
+        Button undo = Ui.primary("Undo", () -> done(o().decline(p.id)));
+        Button now = Ui.button("Send now", () -> done(o().approveAssign(p.id, null, null, false)));
+        card.getChildren().addAll(title, because, task, new HBox(8, undo, now), Ui.dim("or /deny, /approve"));
     }
 
     private void assign() {

@@ -34,7 +34,8 @@ import javax.imageio.ImageIO;
  * step. Usage: {@code java -cp ... dev.juno.ui.JunoScreens <scratch dir> <output dir> <scenario>}. Scenarios:
  * {@code ui} (no CLI: Juno's cards, the inbox, can-talk-to, /status, /getcontextfrom, settings) and {@code live}
  * (Juno and two agents on haiku / low: an unnamed task approved and reported, a fresh start, a refused unlinked
- * message, a link opened through Juno, a hop-limit stop).
+ * message, a link opened through Juno, a hop-limit stop), {@code undo} (a task for a named agent undone, then one going
+ * by itself).
  */
 public final class JunoScreens {
     private static Path out;
@@ -84,6 +85,7 @@ public final class JunoScreens {
         switch (scenario) {
             case "ui" -> ui();
             case "live" -> live();
+            case "undo" -> undo();
             default -> throw new IllegalArgumentException(scenario);
         }
         ctx.runtime.shutdown();
@@ -228,6 +230,38 @@ public final class JunoScreens {
         StringBuilder sb = new StringBuilder();
         for (var e : ctx.runtime.live(a.id).history()) sb.append(e).append('\n');
         return sb.toString();
+    }
+
+    /** Juno on haiku, with bob named: the task waits on a card, is undone once, and the second time goes by itself. */
+    private static void undo() throws Exception {
+        click("Cancel");
+        Agent juno = ctx.runtime.juno();
+        Agent bob = create("bob", "tester");
+        type(juno, "Give bob this task: reply with the single word apple.");
+        waitFor(() -> !ctx.runtime.orchestration().proposals().isEmpty(), 180);
+        Thread.sleep(1000);
+        shot("70-undo-card");
+        run(() -> window.inbox().open());
+        Thread.sleep(500);
+        shotAll("71-undo-inbox");
+        run(() -> window.inbox().button().fire());
+        System.out.println("COUNTING " + ctx.runtime.orchestration().proposals().stream().map(p -> p.sendAt > 0).toList()
+                + " bob task=" + bob.task);
+        click("Undo");
+        waitIdle(juno);
+        Thread.sleep(16_000); // past the window: nothing may arrive
+        System.out.println("AFTER UNDO proposals=" + ctx.runtime.orchestration().proposals().size() + " bob task=" + bob.task
+                + " bob status=" + bob.statusText() + " juno notices=" + juno.notices);
+        shot("72-undone");
+
+        type(juno, "Give bob this task: reply with the single word pear.");
+        waitFor(() -> !ctx.runtime.orchestration().proposals().isEmpty(), 180);
+        System.out.println("WAITING for it to go by itself");
+        waitFor(() -> bob.task != null && bob.task.reported && !bob.turnOpen, 120);
+        waitIdle(juno, bob);
+        System.out.println("WENT bob task=" + (bob.task == null ? null : bob.task.gist) + " proposals="
+                + ctx.runtime.orchestration().proposals().size());
+        shot("73-went-by-itself");
     }
 
     // ---------------------------------------------------------------- helpers

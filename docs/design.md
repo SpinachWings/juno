@@ -68,7 +68,10 @@ finished, asked, reported, failed. Cleared by clicking into or scrolling the pan
 1. **Direct:** you type a task in an agent's pane. Juno isn't involved (unless "Tell Juno about direct tasks" is on:
    she gets a one-line note).
 2. **Named, through Juno:** "juno, give bob the login bug" (Juno writes the task), or `/assign<name> <task>` in her
-   pane (delivered by the app, no Juno tokens; she's told in one line and tracks the result).
+   pane (delivered by the app, no Juno tokens; she's told in one line and tracks the result). "Named" is judged from
+   the words of your message, so it can be wrong ("don't give it to bob" names bob): a task Juno writes for an agent
+   you named waits 15 seconds on a card with **Undo / Send now** (or `/deny`, `/approve`) before it goes. `/assign`
+   goes at once.
 3. **Unnamed, through Juno:** "get someone to fix the login bug". Juno **proposes** an agent — approval card with the
    agent, why (profile, status, context use) and the task, **Approve / Edit / Choose another / Cancel** (or `/approve`,
    `/deny`). Held by the server until you decide. Setting **Juno asks before assigning**: *Only when I didn't name

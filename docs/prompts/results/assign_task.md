@@ -4,6 +4,9 @@
 Delivered to {{to}} ({{#fresh}}new conversation{{/fresh}}{{^fresh}}continuing its conversation{{/fresh}}){{#queued}}.
 It's queued, {{queued}}{{/queued}}. Its result will be reported to you.
 
+## undo-window
+It goes to {{to}} in {{seconds}} seconds, continuing its conversation, unless the user undoes it. If they do, a message tells you. Otherwise its result will be reported to you.
+
 ## held
 Held for the user's approval ({{why}}). The outcome arrives as a message.
 

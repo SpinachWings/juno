@@ -145,6 +145,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
             refreshBranch(l);
         }
         if (!live.containsKey(Orchestration.JUNO)) createJuno();
+        orchestration.started();
         queue.sort((x, y) -> Long.compare(x.agent.statusSince, y.agent.statusSince));
         mcp.start();
         hooks.start();
@@ -1544,6 +1545,18 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
     synchronized void notify(Agent a, String text) {
         a.notices.add(text);
         store.save(a);
+    }
+
+    /** Runs {@code r} once after {@code ms} on the runtime's timer; dropped if Juno is closing. */
+    void later(Runnable r, long ms) {
+        if (closed) return;
+        timer.schedule(() -> {
+            try {
+                r.run();
+            } catch (RuntimeException e) {
+                System.err.println("Runtime timer task failed: " + e);
+            }
+        }, ms, TimeUnit.MILLISECONDS);
     }
 
     void proposalsChanged() {

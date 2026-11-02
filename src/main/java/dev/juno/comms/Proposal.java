@@ -22,6 +22,8 @@ public class Proposal {
     public boolean askAssign;
     /** Why it was held, for Juno's tool result and the card. */
     public String why = "";
+    /** Set when the user named the agent: it goes by itself at this time unless undone (design §4.2). 0 = waits. */
+    public long sendAt;
 
     /** LINK: the two agents and Juno's reason. */
     public String a;

@@ -76,6 +76,11 @@ public final class Inbox {
                 Button link = Ui.primary("Link", () -> said(o.approveLink(p.id)));
                 Button no = Ui.button("Don't link", () -> said(o.decline(p.id)));
                 out.add(new Item(juno, "🔗 link", name(p.a) + " ↔ " + name(p.b) + "? Why: " + p.reason, List.of(link, no, go(juno))));
+            } else if (p.sendAt > 0) {
+                Button undo = Ui.primary("Undo", () -> said(o.decline(p.id)));
+                Button now = Ui.button("Send now", () -> said(o.approveAssign(p.id, null, null, false)));
+                out.add(new Item(juno, "→ sending", name(p.agentId) + " in a few seconds: " + oneLine(p.task),
+                        List.of(undo, now, go(juno))));
             } else {
                 Button yes = Ui.primary(p.fresh ? "Start fresh" : "Approve", () -> said(o.approveAssign(p.id, null, null, p.fresh)));
                 Button cancel = Ui.button("Cancel", () -> said(o.decline(p.id)));

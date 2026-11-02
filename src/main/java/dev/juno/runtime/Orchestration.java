@@ -35,14 +35,35 @@ import java.util.regex.Pattern;
  */
 public final class Orchestration {
     public static final String JUNO = "juno";
+    /** How long a task for an agent the user named can be undone before it goes (design §4.2). */
+    static final long UNDO_MS = 15_000L;
 
     private final AgentRuntime rt;
     private final CommsStore store;
     private final LoopGuard guard = new LoopGuard();
+    /** {@link #UNDO_MS}; 0 sends at once (tests). */
+    long undoMs = UNDO_MS;
 
     Orchestration(AgentRuntime rt, CommsStore store) {
         this.rt = rt;
         this.store = store;
+    }
+
+    /**
+     * After a restart nothing may leave without the chance to undo it, and the time has gone: a task still counting
+     * down waits for an answer like any other proposal.
+     */
+    void started() {
+        boolean changed = false;
+        for (Proposal p : store.proposals()) {
+            if (p.sendAt > 0) {
+                p.sendAt = 0;
+                p.askAssign = true;
+                p.why = "Juno restarted before it was sent";
+                changed = true;
+            }
+        }
+        if (changed) store.save();
     }
 
     public static boolean isJuno(Agent a) {
@@ -341,9 +362,31 @@ public final class Orchestration {
                     + (ask ? " a task" : " fresh") + ": approve or cancel below.");
             return Reply.ok(result("assign_task", "held", Map.of("why", p.why)));
         }
+        // "Named" is only a guess from the words of the message ("don't give it to bob" names bob too), so a task sent
+        // on that guess waits a moment, with an Undo. "Never" is the user's own choice: no wait.
+        if (mode == AssignApproval.UNNAMED && undoMs > 0) {
+            Proposal p = new Proposal();
+            p.id = UUID.randomUUID().toString().substring(0, 8);
+            p.kind = Proposal.Kind.ASSIGN;
+            p.created = System.currentTimeMillis();
+            p.agentId = t.id;
+            p.task = task.strip();
+            p.sendAt = p.created + undoMs;
+            addProposal(p, t.name + " gets Juno's task in " + undoMs / 1000 + " s unless you undo it.");
+            String id = p.id;
+            rt.later(() -> sendIfStillCounting(id), undoMs);
+            return Reply.ok(result("assign_task", "undo-window", Map.of("to", t.name, "seconds", undoMs / 1000)));
+        }
         String queued = deliverTask(t, task, false, false);
         rt.say(juno(), "→ Task delivered to " + t.name + ".", "dim");
         return Reply.ok(result("assign_task", "delivered", Map.of("to", t.name, "fresh", false, "queued", queued)));
+    }
+
+    private void sendIfStillCounting(String id) {
+        synchronized (rt) {
+            boolean counting = store.proposals().stream().anyMatch(p -> p.id.equals(id) && p.sendAt > 0);
+            if (counting) approveAssign(id, null, null, false);
+        }
     }
 
     /** Whether the user's latest message to Juno names the agent (case and spaces ignored, design §8). */
@@ -533,6 +576,11 @@ public final class Orchestration {
                 return "That agent no longer exists.";
             }
             Agent t = l.agent;
+            if (p.sendAt > 0) { // the undo window ended or Send now: Juno was already told it would go
+                String queued = deliverTask(t, p.task, false, false);
+                rt.say(juno(), "→ Task delivered to " + t.name + (queued.isEmpty() ? "" : " (" + queued + ")") + ".", "dim");
+                return null;
+            }
             boolean edited = task != null && !task.strip().equals(p.task.strip());
             String text = task == null || task.isBlank() ? p.task : task.strip();
             String outcome;
@@ -570,7 +618,7 @@ public final class Orchestration {
                 rt.notify(juno(), wrapper("approval", "link-declined", Map.of("a", name(p.a), "b", name(p.b))));
                 rt.say(juno(), "✗ Not linked: " + name(p.a) + " ↔ " + name(p.b) + ".", "dim");
             } else {
-                rt.notify(juno(), wrapper("approval", p.askAssign ? "assign-cancelled" : "fresh-cancelled",
+                rt.notify(juno(), wrapper("approval", p.askAssign || p.sendAt > 0 ? "assign-cancelled" : "fresh-cancelled",
                         Map.of("agent", name(p.agentId))));
                 rt.say(juno(), "✗ Cancelled the task for " + name(p.agentId) + ".", "dim");
             }
