@@ -261,7 +261,7 @@ clear message. This is needed because on both hosts the dangerous actions are *a
 | Reply to a thread | `add_reply_to_pull_request_comment` | `save_note` with `discussion_id`, or `save_merge_request_review` `reply_discussion` |
 | Resolve a thread | `pull_request_review_write` `resolve_thread` | `save_merge_request_review` `resolve_discussion` |
 | Checks / pipelines on the head commit | `pull_request_read` `get_check_runs`, `get_status`; `actions` toolset for workflow runs | `get_merge_request` `include: pipelines`, `get_pipeline` |
-| Required checks, "needs approval" | **REST** (rulesets / branch protection; workflow runs with `status: action_required`) | **REST** (`only_allow_merge_if_pipeline_succeeds`, `detailed_merge_status`, manual jobs) |
+| Required checks, "needs approval" | **GraphQL** `isRequired(pullRequestNumber:N)` (verified), or REST rulesets / branch protection; workflow runs with `status: action_required` | **REST** (`only_allow_merge_if_pipeline_succeeds`, `detailed_merge_status`, manual jobs) |
 | Approve / request changes | `pull_request_review_write` `event: APPROVE` / `REQUEST_CHANGES` | `save_merge_request_review` `approve` |
 | Merge / close | `merge_pull_request` / `update_pull_request` `state: closed` | `accept_merge_request` / `save_merge_request` `state_event: close` |
 
@@ -365,7 +365,9 @@ re-review; people's threads are left for you or them.
   - **New commits pushed while waiting** → waits again on the new head.
   - **No pipelines configured** → reviews straight away; the summary says nothing checked the build or tests.
     (GitHub reports a commit with no checks as status `pending` with zero statuses and zero check runs, so "none" is
-    decided by the counts and the repository's workflow runs, never by the word `pending`.)
+    decided by the counts and the repository's workflow runs, never by the word `pending`; `get_status` covers only
+    legacy statuses and stays `pending` even when Actions checks have passed. A commit can have several runs of the
+    same workflow, one per triggering event, so "passed" means every run on the head sha, not one by name.)
   - **Wait limit reached** → **Awaiting decision ⚠**: **Keep waiting / Cancel**.
 - **Snapshot:** a temporary **detached worktree** at the head commit (`~/.juno/review/<reviewer>-<pr>-<commit>`); the
   reviewer's process runs in it (restart, conversation kept) and is told the PR/MR, head and base commits and
@@ -652,5 +654,5 @@ GitLab's MCP server takes a fine-grained PAT only, so a GitLab key holds two tok
 
 **Verified live on GitHub** (Milestone 5a): opening a PR, a pending review with an inline comment anchored to a commit and
 a submitted summary, reply, resolve, close, and check/status reads. **Still to verify:** everything on GitLab (names
-are from its documentation); a GitHub PR with workflow runs (required checks, "needs approval"); check runs on a
+are from its documentation); a *required* check and "needs approval" (`action_required`) with real data; check runs on a
 private repository; the `<name>.ghe.com` MCP URL.

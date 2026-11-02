@@ -25,6 +25,24 @@ with its review history; branch `spike/5a` deleted).
 - `main` here has no ruleset (`/rules/branches/main` answers `[]`) and no workflow runs, so required checks and
   `action_required` were read but not observed with real data.
 
+### Pipelines, live (GitHub, `terrible-workout-tracker`, PR #7, workflow `CI` on `push` and `pull_request`)
+- Pushing the branch and opening the PR each started a run, so a PR head has **two workflow runs and two check runs
+  with the same name** (`hello`, one per event). Juno must treat a check by (name, event) and count a commit as passed
+  only when every run on the head sha has finished successfully, not by name.
+- `get_check_runs` showed `in_progress` (no `conclusion`) within 10 s, then `completed` / `success` by 20 s; its items
+  carry only `id, name, status, conclusion, started_at, completed_at, html_url, details_url` (**no head sha, no
+  required flag, no app**).
+- `get_status` stayed `{"state":"pending","total_count":0}` the whole time, even after the checks succeeded: it only
+  covers legacy commit statuses. **Never use it for GitHub Actions.**
+- `actions_list` `list_workflow_runs` (toolset `/mcp/x/actions`, filter `branch`) gives event, status, conclusion and
+  `head_sha` per run; that is how runs are tied to the head commit.
+- **Required checks:** GraphQL `commit.statusCheckRollup.contexts{... on CheckRun{name isRequired(pullRequestNumber:N)}}`
+  works with the fine-grained token and answered `false` for both (no ruleset: `/rules/branches/main` is `[]`). That is
+  the call for "required" (design §6.3); REST rulesets / branch protection are the fallback.
+- Not seen: `action_required` ("approve and run"; needs a fork PR), a failing job, a required check, a private repo.
+- Review flow repeated on this PR (pending review, inline comment, submit): worked. PR closed unmerged, branch
+  `spike/5a` deleted.
+
 ### Capability table
 
 | Capability | GitHub (`https://api.githubcopilot.com/mcp/`) | GitLab (`https://gitlab.com/api/v4/mcp`, docs, GitLab 19.5) |
@@ -37,7 +55,7 @@ with its review history; branch `spike/5a` deleted).
 | Reply to a thread | `add_reply_to_pull_request_comment` (numeric comment id, not the thread id) | `save_note` with `discussion_id`, or `save_merge_request_review` `reply_discussion` |
 | Resolve a thread | `pull_request_review_write` `method: resolve_thread` (needs `threadId`) | `save_merge_request_review` `method: resolve_discussion` |
 | Pipeline / check status per commit | `pull_request_read` `get_check_runs`, `get_status` (head commit; verified to answer, 0 on a PR with no runs); workflow runs: separate toolset `actions` (`actions_list` `list_workflow_runs`, `actions_get`, `get_job_logs`) | `get_merge_request` `include: pipelines`; `list_pipelines`, `get_pipeline` (`include: jobs`) |
-| Required checks | **missing → REST/GraphQL**: `GET /repos/{r}/rules/branches/{branch}` (rulesets; answers 200 with a PAT), branch protection `.../protection/required_status_checks` (403 for this PAT: needs Administration read), or GraphQL `isRequired` on check contexts | **missing → REST**: project setting `only_allow_merge_if_pipeline_succeeds`; MR `detailed_merge_status` |
+| Required checks | **missing → GraphQL (verified)**: `isRequired(pullRequestNumber:N)` on a check-run context; also REST `GET /repos/{r}/rules/branches/{branch}` (rulesets; answers 200 with a PAT), branch protection `.../protection/required_status_checks` (403 for this PAT: needs Administration read), or GraphQL `isRequired` on check contexts | **missing → REST**: project setting `only_allow_merge_if_pipeline_succeeds`; MR `detailed_merge_status` |
 | "Waiting for approval" | **missing in MCP → REST**: workflow runs with `status: action_required` (also `waiting`) | job `status: manual`, pipeline `manual` / `blocked` |
 | Approve | `pull_request_review_write` `event: APPROVE` | `save_merge_request_review` `method: approve` |
 | Request changes | `pull_request_review_write` `event: REQUEST_CHANGES` | `save_merge_request_review` `verdict` (unverified) |
@@ -53,8 +71,8 @@ Extra toolsets by URL path `/mcp/x/<toolset>` (e.g. `/mcp/x/actions` adds 4 tool
 
 ### Still not verified
 - Everything on GitLab (names are from a mirror of the official tools page, GitLab 19.5; no sandbox).
-- A GitHub PR head **with** workflow runs: required checks (rulesets / branch protection / GraphQL `isRequired`),
-  `action_required` runs and failed jobs were not seen with data (the sandbox has no workflows).
+- `action_required` runs, failed jobs and a *required* check were not seen with data (the sandbox has no ruleset,
+  and `action_required` needs a first-time fork contributor).
 - Whether check runs on a **private** repository are readable with Contents / Pull requests / Actions / Commit
   statuses read (the sandbox repository is public). The Test button should find out.
 - The `<name>.ghe.com` URL.
