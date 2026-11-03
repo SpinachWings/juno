@@ -63,7 +63,7 @@ public final class AgentPane {
     private String shownPermission;
     private String shownProposals = "";
     private boolean folderCardShown;
-    private String shownAsk = "";
+    private boolean profileCardShown;
 
     public AgentPane(AppContext ctx, Agent agent, PaneHost host) {
         this.ctx = ctx;
@@ -270,7 +270,7 @@ public final class AgentPane {
         modelLabel.setText((model.isBlank() ? "default model" : model) + " · " + (effort.isBlank() ? "default effort" : effort));
         resume.setDisable(!(agent.interrupted || (agent.status == Agent.Status.AWAITING
                 && agent.reason == Agent.Reason.FAILED)) || agent.turnOpen);
-        stop.setDisable(!agent.turnOpen && agent.heldMessage == null && agent.status != Agent.Status.WAITING);
+        stop.setDisable(!agent.turnOpen && agent.heldMessage == null);
         root.setStyle("-fx-border-color: " + agent.colour + ";");
         refreshContacts();
 
@@ -331,46 +331,29 @@ public final class AgentPane {
     private void refreshCards(LiveAgent l) {
         List<LiveAgent.PendingPermission> perms = l.pendingPermissions();
         boolean folder = agent.status == Agent.Status.AWAITING && agent.reason == Agent.Reason.FOLDER;
+        boolean noProfile = agent.status == Agent.Status.AWAITING && agent.reason == Agent.Reason.PROFILE;
         String permId = perms.isEmpty() ? null : perms.get(0).id;
         List<dev.juno.comms.Proposal> proposals = juno ? runtime.orchestration().proposals() : List.of();
         String proposalIds = String.join(",", proposals.stream().map(p -> p.id).toList());
-        String ask = agent.review != null && agent.review.ask != null ? agent.review.ask + agent.review.askText : "";
-        if (java.util.Objects.equals(permId, shownPermission) && folder == folderCardShown
-                && proposalIds.equals(shownProposals) && ask.equals(shownAsk)) return;
-        shownAsk = ask;
+        if (java.util.Objects.equals(permId, shownPermission) && folder == folderCardShown && noProfile == profileCardShown
+                && proposalIds.equals(shownProposals)) return;
         shownPermission = permId;
         folderCardShown = folder;
+        profileCardShown = noProfile;
         shownProposals = proposalIds;
         cards.getChildren().clear();
         if (permId != null) cards.getChildren().add(permissionCard(perms.get(0)));
         if (folder) cards.getChildren().add(folderCard(l));
-        if (!ask.isEmpty()) cards.getChildren().add(pipelineCard());
+        if (noProfile) cards.getChildren().add(profileCard());
         for (dev.juno.comms.Proposal p : proposals) cards.getChildren().add(new ProposalCard(ctx, p, this::focusInput).node());
     }
 
     /** The four answers and the editable rule (design §7.5). */
-    /** Pipelines that need the user: the review waits on this card or the inbox (design §6.3). */
-    private VBox pipelineCard() {
-        Label title = new Label("⚠ " + agent.review.askText);
-        title.setWrapText(true);
-        title.getStyleClass().add("card-title");
-        Button go = Ui.primary(agent.review.ask.goLabel, () -> answerReview(true));
-        Button cancel = Ui.button("Cancel", () -> answerReview(false));
-        cancel.getStyleClass().add("danger");
-        VBox card = new VBox(6, title, new HBox(8, go, cancel));
-        card.getStyleClass().add("card-folder");
-        return card;
-    }
-
-    private void answerReview(boolean go) {
-        String err = runtime.reviews().answer(agent, go);
-        if (err != null) runtime.say(agent, err, "warn");
-    }
-
     private VBox permissionCard(LiveAgent.PendingPermission pp) {
         Profile p = runtime.profile(agent.profile);
         Label title = new Label("🔐 " + agent.name + " wants " + pp.tool + ": " + permissionDetail(pp));
         title.setWrapText(true);
+        title.setMaxHeight(96); // the rest is an ellipsis with the whole text in a tooltip
         title.getStyleClass().add("card-title");
         TextField rule = new TextField(pp.proposedRule);
         rule.getStyleClass().add("mono");
@@ -401,13 +384,35 @@ public final class AgentPane {
             case "WebFetch" -> in.path("url").asText();
             default -> in.toString();
         };
-        return s.length() > 300 ? s.substring(0, 300) + "…" : s;
+        return s;
     }
 
     private void answer(LiveAgent.PendingPermission pp, AgentRuntime.Answer a, String rule) {
         String err = runtime.answer(agent, pp.id, a, rule);
         if (err != null) runtime.say(agent, err, "warn");
         input.requestFocus();
+    }
+
+    /** The agent's profile was removed: pick another (design §6). */
+    private VBox profileCard() {
+        Label title = new Label("⚙ " + agent.statusDetail);
+        title.setWrapText(true);
+        title.getStyleClass().add("card-title");
+        ComboBox<String> pick = new ComboBox<>();
+        pick.getItems().setAll(ctx.settings.profiles.stream().map(x -> x.name)
+                .filter(n -> !n.equals(dev.juno.model.BuiltInProfiles.ORCHESTRATOR)).toList());
+        pick.setPromptText("Choose a profile");
+        Button set = Ui.primary("Use this profile", () -> {
+            String err = runtime.setProfile(agent, pick.getValue());
+            if (err != null) runtime.say(agent, err, "warn");
+        });
+        set.disableProperty().bind(pick.valueProperty().isNull());
+        set.setMinWidth(javafx.scene.layout.Region.USE_PREF_SIZE);
+        HBox row = new HBox(8, pick, set);
+        row.setAlignment(Pos.CENTER_LEFT);
+        VBox card = new VBox(6, title, row);
+        card.getStyleClass().add("card-folder");
+        return card;
     }
 
     /** Pick (or create) a project (design §7.7). */
@@ -489,7 +494,7 @@ public final class AgentPane {
         String lower = typed.toLowerCase(Locale.ROOT);
         List<String> names = runtime.agents().stream().map(a -> a.name).toList();
         List<String> nameCommands = new ArrayList<>(List.of("hey", "cantalkto", "stoptalkingto"));
-        if (juno) nameCommands.addAll(List.of("getcontextfrom", "assign"));
+        if (juno) nameCommands.add("assign");
         else names = names.stream().filter(n -> !n.equals(agent.name)).toList();
         List<String> withJuno = new ArrayList<>(names);
         withJuno.add(runtime.juno().name);

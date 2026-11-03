@@ -19,7 +19,7 @@ class SettingsStoreTest {
         JunoHome home = new JunoHome(tmp);
         SettingsStore store = new SettingsStore(home);
         Settings s = store.load();
-        assertEquals(6, s.profiles.size());
+        assertEquals(4, s.profiles.size());
 
         Key k = new Key();
         k.label = "bot";
@@ -42,13 +42,13 @@ class SettingsStoreTest {
         assertNotNull(back.keys.get(0).id);
         assertEquals("keyring:juno/key/abc", back.keys.get(0).token);
         assertEquals(List.of("npm ci", "npm test"), back.projects.get(0).buildAndTestCommands);
-        assertEquals(7, back.profiles.size());
+        assertEquals(5, back.profiles.size());
         Profile coder = back.profiles.get(1);
         assertEquals("claude-haiku-5-5", coder.model, "editable fields survive");
         assertNotEquals("tampered", coder.systemPrompt, "locked fields come from code");
         assertFalse(coder.allowedTools.isEmpty());
-        assertFalse(back.profiles.get(6).builtIn);
-        assertEquals("coder 2", back.profiles.get(6).name);
+        assertFalse(back.profiles.get(4).builtIn);
+        assertEquals("coder 2", back.profiles.get(4).name);
         assertEquals(0, Files.list(tmp).filter(f -> f.toString().endsWith(".tmp")).count(), "no temp files left");
     }
 
@@ -60,7 +60,7 @@ class SettingsStoreTest {
         imposter.name = "coder";
         s.profiles.add(imposter);
         store.save(s);
-        assertEquals(6, store.load().profiles.size());
+        assertEquals(4, store.load().profiles.size());
     }
 
     @Test
@@ -112,5 +112,26 @@ class SettingsStoreTest {
         assertFalse(TokenStore.mask("ghp_abcdefghijklmnop").contains("ghp_abcdefghijkl"));
         assertTrue(TokenStore.mask("ghp_abcdefghijklmnop").endsWith("mnop"));
         assertEquals("••••••••", TokenStore.mask("short"));
+    }
+
+    @Test
+    void savedReviewerAndNotesWriterProfilesAreDroppedAndOwnProfilesLoseRetiredRules() {
+        SettingsStore store = new SettingsStore(new JunoHome(tmp));
+        Settings s = store.load();
+        Profile old = new Profile();
+        old.name = "reviewer";
+        old.builtIn = true;
+        s.profiles.add(old);
+        Profile mine = new Profile();
+        mine.name = "my reviewer";
+        mine.allowedTools.addAll(List.of("Read", "mcp__juno__start_review", "host:read", "host:review", "host:resolve"));
+        mine.disallowedTools.addAll(List.of("host:merge", "Edit"));
+        s.profiles.add(mine);
+        store.save(s);
+        Settings back = store.load();
+        assertTrue(back.profiles.stream().noneMatch(p -> p.name.equals("reviewer")));
+        Profile kept = back.profiles.stream().filter(p -> p.name.equals("my reviewer")).findFirst().orElseThrow();
+        assertEquals(List.of("Read", "host:read"), kept.allowedTools);
+        assertEquals(List.of("Edit"), kept.disallowedTools);
     }
 }

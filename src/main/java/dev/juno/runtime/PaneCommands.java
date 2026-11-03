@@ -18,7 +18,7 @@ import java.util.Locale;
  */
 public final class PaneCommands {
     /** Commands that take a name or skill straight after them ({@code /heybob}). */
-    static final List<String> ATTACHED = List.of("stoptalkingto", "getcontextfrom", "cantalkto", "activate", "assign",
+    static final List<String> ATTACHED = List.of("stoptalkingto", "cantalkto", "activate", "assign",
             "hey");
     /** Suggested in autocomplete after /model. */
     public static final List<String> MODELS = List.of("haiku", "sonnet", "opus", "fable", "claude-haiku-5-5",
@@ -66,7 +66,7 @@ public final class PaneCommands {
         if (p != null) {
             for (ProfileCommand c : p.commands) {
                 out.add(new CommandRegistry.Command(c.name, "/" + c.name + " [details]", CommandRegistry.Scope.PROFILE,
-                        AgentPrompts.firstLine(c.template, 90), "/" + c.name));
+                        c.template.strip().lines().findFirst().orElse(""), "/" + c.name));
             }
         }
         return out;
@@ -148,7 +148,7 @@ public final class PaneCommands {
                 return said(runtime.orchestration().linkByUser(a, args, c.name().equals("cantalkto")), null);
             }
             case "getcontext" -> { return new Outcome.Said(runtime.orchestration().contextSummary(a), "info"); }
-            case "getcontextfrom", "assign", "status", "broadcast" -> {
+            case "assign", "status" -> {
                 if (!Orchestration.isJuno(a)) return new Outcome.Said("/" + c.name() + " works only in Juno's pane.", "warn");
                 return junoCommand(c.name(), args);
             }
@@ -173,12 +173,6 @@ public final class PaneCommands {
     private Outcome junoCommand(String name, String args) {
         Orchestration o = runtime.orchestration();
         switch (name) {
-            case "getcontextfrom" -> {
-                Agent other = runtime.byName(args).orElse(null);
-                if (args.isBlank()) return new Outcome.Said("Usage: /getcontextfrom<name>", "warn");
-                if (other == null) return new Outcome.Said("There's no agent called " + args + ".", "warn");
-                return new Outcome.Said(o.contextSummary(other), "info");
-            }
             case "assign" -> {
                 String[] parts = args.split("\\s+", 2);
                 if (parts[0].isBlank() || parts.length < 2 || parts[1].isBlank()) {
@@ -186,13 +180,7 @@ public final class PaneCommands {
                 }
                 return said(o.assign(parts[0], parts[1]), null);
             }
-            case "status" -> { return new Outcome.Said(o.status(), "info"); }
-            default -> {
-                if (args.isBlank()) return new Outcome.Said("Usage: /broadcast <text>", "warn");
-                int n = o.broadcast(args);
-                return new Outcome.Said(n == 0 ? "There are no agents to message." : "Sent to " + n + " agent"
-                        + (n == 1 ? "" : "s") + ".", n == 0 ? "warn" : "dim");
-            }
+            default -> { return new Outcome.Said(o.status(), "info"); }
         }
     }
 
@@ -208,9 +196,6 @@ public final class PaneCommands {
     private Outcome diff(Agent a) {
         Path folder = runtime.folder(a);
         if (runtime.project(a) == null) return new Outcome.Said(a.name + " has no project folder.", "info");
-        if (runtime.usesWorktree(a) && !Files.isDirectory(folder)) {
-            return new Outcome.Said(a.name + " has no worktree yet: it is made with its first message.", "info");
-        }
         if (!Files.isDirectory(folder) || !Git.isRepository(folder)) {
             return new Outcome.Said(folder + " isn't a git repository.", "info");
         }

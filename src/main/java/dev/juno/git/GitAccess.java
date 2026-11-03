@@ -1,14 +1,12 @@
 package dev.juno.git;
 
-import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
-import java.util.Base64;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * The git environment of design §5.1.1: what an agent's process (and Juno's own git commands for it) may reach. The
+ * The git environment of design §5.1.1: what an agent's process may reach. The
  * user's credential helpers, SSH agent and tokens in the environment never get through; without a key only local
  * repositories work; with one, HTTPS works and SSH remotes are rewritten to it so the token applies. All of it is
  * environment of that one process: nothing goes into git config or remote URLs.
@@ -36,17 +34,6 @@ public final class GitAccess {
         if (!hosts.isEmpty()) config.add(new String[] {"credential.helper", "!sh '" + helper.replace('\\', '/') + "'"});
         hosts.forEach(h -> config.addAll(rewrites(h)));
         return environment(hosts.isEmpty() ? "file" : "file:https", config);
-    }
-
-    /** Juno's own git commands for an agent (review fetches): the same rules, the token only in this child's environment. */
-    public static Map<String, String> forJuno(String host, boolean gitlab, String token) {
-        List<String[]> config = new ArrayList<>();
-        config.add(new String[] {"credential.helper", ""});
-        config.addAll(rewrites(host));
-        String basic = Base64.getEncoder().encodeToString((username(gitlab) + ":" + token)
-                .getBytes(StandardCharsets.UTF_8));
-        config.add(new String[] {"http.https://" + host + "/.extraHeader", "Authorization: Basic " + basic});
-        return environment("file:https", config);
     }
 
     private static List<String[]> rewrites(String host) {

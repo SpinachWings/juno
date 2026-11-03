@@ -20,10 +20,8 @@ import javafx.stage.Popup;
 
 /**
  * The inbox (design §7.2): everything waiting on you, each with the agent, the reason, a one-line summary and its answer
- * buttons or "go to pane", plus a quiet Waiting section. Items come from the agents' state, so they vanish when
- * answered anywhere.
- * Juno's proposals (assignments, fresh starts, link suggestions) are listed with their answers too. A reviewer's
- * comments wait as its ❓ question; what it asks about pipelines is listed with its buttons.
+ * buttons or "go to pane". Items come from the agents' state, so they vanish when answered anywhere. Juno's proposals
+ * (assignments, fresh starts, link suggestions) are listed with their answers too.
  */
 public final class Inbox {
     /** One thing waiting on the user. */
@@ -50,6 +48,7 @@ public final class Inbox {
         frame.getStyleClass().add("inbox-popup");
         frame.getStylesheets().setAll(dev.juno.ui.Theme.class.getResource("/dev/juno/ui/juno.css").toExternalForm());
         popup.getContent().add(frame);
+        Ui.truncationTips(frame);
         popup.setAutoHide(true);
         content.setPadding(new Insets(10));
         ctx.runtime.addListener(new AgentRuntime.Listener() {
@@ -107,19 +106,13 @@ public final class Inbox {
                 case FOLDER -> out.add(new Item(a, a.reason.icon + " folder", l.folderReason() == null
                         ? "needs a project" : l.folderReason(), List.of(go(a))));
                 case FAILED, INTERRUPTED -> {
-                    if (a.review != null && a.review.ask != null) {
-                        Button go = Ui.primary(a.review.ask.goLabel, () -> say(a, ctx.runtime.reviews().answer(a, true)));
-                        Button cancel = Ui.button("Cancel", () -> say(a, ctx.runtime.reviews().answer(a, false)));
-                        cancel.getStyleClass().add("danger");
-                        out.add(new Item(a, a.reason.icon + " pipelines", a.statusDetail, List.of(go, cancel, go(a))));
-                        continue;
-                    }
                     Button resume = Ui.primary("Resume", () -> {
                         String err = ctx.runtime.resume(a);
                         if (err != null) ctx.runtime.say(a, err, "warn");
                     });
                     out.add(new Item(a, a.reason.icon + " " + a.reason.label, a.statusDetail, List.of(resume, go(a))));
                 }
+                case PROFILE -> out.add(new Item(a, a.reason.icon + " profile", a.statusDetail, List.of(go(a))));
                 case KEY -> out.add(new Item(a, a.reason.icon + " key", a.statusDetail, List.of(go(a))));
             }
         }
@@ -141,7 +134,7 @@ public final class Inbox {
 
     private static String oneLine(String s) {
         String t = s.strip().replace('\n', ' ');
-        return t.length() > 160 ? t.substring(0, 160) + "…" : t;
+        return t;
     }
 
     private static String oneLine(LiveAgent.PendingPermission pp) {
@@ -150,14 +143,14 @@ public final class Inbox {
             case "Edit", "Write", "MultiEdit", "Read" -> pp.input.path("file_path").asText();
             default -> pp.input.toString();
         };
-        return s.length() > 140 ? s.substring(0, 140) + "…" : s;
+        return s;
     }
 
     private static String lastParagraph(String reply) {
         if (reply == null || reply.isBlank()) return "";
         String[] paras = reply.strip().split("\n\\s*\n");
         String s = paras[paras.length - 1].strip().replace('\n', ' ');
-        return s.length() > 200 ? s.substring(0, 200) + "…" : s;
+        return s;
     }
 
     private Button go(Agent a) {
@@ -197,7 +190,6 @@ public final class Inbox {
 
     private void refresh() {
         List<Item> items = items();
-        List<Agent> waiting = ctx.runtime.agents().stream().filter(a -> a.status == Agent.Status.WAITING).toList();
         button.setText("Inbox (" + items.size() + ")");
         button.getStyleClass().remove("inbox-busy");
         if (!items.isEmpty()) button.getStyleClass().add("inbox-busy");
@@ -213,6 +205,7 @@ public final class Inbox {
             head.setAlignment(Pos.CENTER_LEFT);
             Label summary = Ui.dim(it.summary());
             summary.setWrapText(true);
+            summary.setMaxHeight(48); // three lines; the rest is an ellipsis with the whole text in a tooltip
             HBox buttons = new HBox(8);
             buttons.setAlignment(Pos.CENTER_RIGHT);
             for (Button b : it.buttons()) {
@@ -223,13 +216,6 @@ public final class Inbox {
             card.getStyleClass().add("inbox-item");
             HBox.setHgrow(card, Priority.ALWAYS);
             content.getChildren().add(card);
-        }
-        if (!waiting.isEmpty()) {
-            content.getChildren().add(Ui.subheading("Waiting ⏳"));
-            for (Agent a : waiting) {
-                long mins = Math.max(0, (System.currentTimeMillis() - a.statusSince) / 60_000);
-                content.getChildren().add(Ui.dim(a.name + " · " + a.statusDetail + " · " + mins + " min"));
-            }
         }
     }
 }

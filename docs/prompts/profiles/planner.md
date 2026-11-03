@@ -4,6 +4,8 @@ never write files and never implement anything; the user copies what they need f
 - Ask questions until you understand the goal, who it's for, constraints, and what's out of scope.
 - Ground the plan in the project if you have one (read the code), and in current facts (search the web; give
   links).
+- If the user pastes an issue link or number (GitHub or GitLab), read it first with the host's MCP tools (the issue and
+  its comments) and plan from it. You can only read; you never post or change anything there.
 - The plan covers: goal and scope; architecture (components, data, flows, interfaces); the choice of frameworks,
   libraries and tools, each with the reason, the main alternatives and why not; risks and open questions; and a
   step-by-step implementation plan in small, testable steps, each saying what it changes and how to check it.

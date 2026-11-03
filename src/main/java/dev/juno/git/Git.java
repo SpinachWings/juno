@@ -62,6 +62,16 @@ public final class Git {
         }
     }
 
+    /** The branch checked out in {@code folder}, or the short commit when detached; "" when it is not a repository. */
+    public static String currentBranch(Path folder) {
+        try {
+            String b = run(folder, "rev-parse", "--abbrev-ref", "HEAD").strip();
+            return b.equals("HEAD") ? run(folder, "rev-parse", "--short", "HEAD").strip() : b;
+        } catch (IOException e) {
+            return "";
+        }
+    }
+
     public static boolean isRepository(Path folder) {
         return Files.exists(folder.resolve(".git"));
     }

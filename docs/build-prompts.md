@@ -16,6 +16,12 @@ That session reads this file and follows the shared preamble plus that milestone
 - Still to do (you): create a sandbox GitHub repository and a sandbox GitLab project you don't mind agents commenting
   on, each with a simple pipeline (e.g. one job that runs `echo ok`). They're needed for Milestone 5a.
 
+> **Changed after Milestone 6 ("Milestone 6b", see `docs/progress.md`):** the reviewer and notes writer profiles, review
+> snapshots, pipeline polling, Juno-managed worktrees and protected-branch hooks, `get_agent_output`,
+> `get_agent_context`, `/getcontextfrom` and `/broadcast` were removed; `hand_over`, `/checkformergeconflicts`, issue
+> reading, the PRs tab and tooltips on shortened text were added. Where Milestones 3–5 below describe the removed parts
+> they are history; `docs/design.md` is current.
+
 ## Shared preamble (applies to every milestone)
 
 ```

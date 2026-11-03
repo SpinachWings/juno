@@ -32,7 +32,7 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * An agent's way to GitHub and GitLab (design §5.1.1, §6.6): which of its keys applies, the host MCP proxy that holds
+ * An agent's way to GitHub and GitLab (design §5.1.1, §6.3): which of its keys applies, the host MCP proxy that holds
  * the key's token and forwards only what its profile may do, and git credentials on request. Tokens are read here, are
  * held only for the running process, and are never logged, shown or sent to the agent except through git's own helper.
  */
@@ -119,7 +119,7 @@ public final class HostAccess {
         return all.size() == 1 ? all.get(0) : null;
     }
 
-    /** The git identity for the agent's worktree (name, email), or null to leave the repository's. */
+    /** The git identity for the agent's commits (name, email), or null to leave the repository's. */
     String[] identity(Agent a, Project p) {
         Key k = keyForProject(a, p);
         return k == null || k.gitName.isBlank() || k.gitEmail.isBlank() ? null : new String[] {k.gitName, k.gitEmail};
@@ -152,9 +152,18 @@ public final class HostAccess {
         return out;
     }
 
-    Map<String, String> gitEnvironment(Agent a, Path helper) {
+    /** The git environment of the agent's process, with the key's author identity when it has one (never in git config). */
+    Map<String, String> gitEnvironment(Agent a, Path helper, Project project) {
         List<String> hosts = keys(a).stream().map(k -> k.host).toList();
-        return GitAccess.forAgent(hosts, helper == null ? "" : helper.toString());
+        Map<String, String> env = new LinkedHashMap<>(GitAccess.forAgent(hosts, helper == null ? "" : helper.toString()));
+        String[] who = identity(a, project);
+        if (who != null) {
+            env.put("GIT_AUTHOR_NAME", who[0]);
+            env.put("GIT_COMMITTER_NAME", who[0]);
+            env.put("GIT_AUTHOR_EMAIL", who[1]);
+            env.put("GIT_COMMITTER_EMAIL", who[1]);
+        }
+        return env;
     }
 
     /** What the launch notes down, to restart when the agent's keys change. */
@@ -192,7 +201,7 @@ public final class HostAccess {
         return apis.apply(k);
     }
 
-    // ---------------------------------------------------------------- the proxy (design §6.6)
+    // ---------------------------------------------------------------- the proxy (design §6.3)
 
     private Upstream upstream(LiveAgent l, String server) {
         Key.Kind kind = server.equals(GITLAB) ? Key.Kind.GITLAB : Key.Kind.GITHUB;
@@ -206,7 +215,7 @@ public final class HostAccess {
             if (token == null || url == null) return null;
             u = new Upstream(k);
             u.clients.add(new McpClient(url, token));
-            // The default toolset plus actions (design §6.6); not for an override, which may be anything.
+            // The default toolset plus actions (design §6.3); not for an override, which may be anything.
             if (kind == Key.Kind.GITHUB && url.endsWith("/mcp/") && k.mcpUrlOverride.isBlank()) {
                 u.clients.add(new McpClient(url + "x/actions", token));
             }
@@ -274,11 +283,6 @@ public final class HostAccess {
             rt.say(a, "✗ " + server + " " + tool + " refused: " + action.rule() + " isn't allowed for " + a.profile + ".", "warn");
             return refused(result("not-allowed", Map.of("profile", a.profile, "host_kind", kindName, "rule", action.rule())));
         }
-        String refusal = checkPosting(a, p, kind, action, sent);
-        if (refusal != null) {
-            rt.say(a, "✗ " + server + " " + tool + " refused: " + AgentPrompts.firstLine(refusal, 200), "warn");
-            return refused(refusal);
-        }
         String field = HostActions.commentField(kind, tool, action);
         if (field != null && !sent.path(field).asText("").isBlank()
                 && !sent.path(field).asText("").startsWith("🤖 ")) {
@@ -292,47 +296,12 @@ public final class HostAccess {
         try {
             JsonNode r = c.callTool(tool, sent);
             if (action == Action.OPEN && !r.path("isError").asBoolean(false)) {
-                rt.prOpened(l, sent.path(HostActions.baseField(kind)).asText(""));
+                rt.prOpened(l, kind, sent, r);
             }
             return r.isObject() ? (ObjectNode) r : refused(result("failed", Map.of("host_kind", kindName, "detail", "an empty answer")));
         } catch (IOException e) {
             String wanted = e instanceof HostApi.HostException h && !h.wanted.isBlank() ? " The host asks for " + h.wanted + "." : "";
             return refused(result("failed", Map.of("host_kind", kindName, "detail", e.getMessage() + wanted)));
-        }
-    }
-
-    /**
-     * Agents that review post only during a review, once the user has answered, and on the reviewed commit; and they
-     * resolve only the threads they started (design §6.3, §6.6). The rest of "only what you approve" is the prompt's job.
-     */
-    private String checkPosting(Agent a, Profile p, Key.Kind kind, Action action, JsonNode args) {
-        boolean posting = action == Action.REVIEW || action == Action.REPLY || action == Action.RESOLVE;
-        if (!posting) return null;
-        Agent.Review r;
-        synchronized (rt) {
-            r = a.review;
-        }
-        boolean reviewer = HostActions.allowed(Action.REVIEW, p.allowedTools, p.disallowedTools);
-        if (reviewer) {
-            if (r == null || r.snapshot == null) return result("no-review", Map.of());
-            if (!r.approved) return result("not-approved", Map.of());
-            String commit = args.path(HostActions.commitField(kind)).asText("");
-            if (!commit.isBlank() && !r.headSha.startsWith(commit)) return result("head-moved", Map.of("head", r.headSha));
-        }
-        if (action != Action.RESOLVE) return null;
-        String method = args.path("method").asText("");
-        if (method.startsWith("unresolve")) return null;
-        Key k = key(a, kind);
-        HostApi api = k == null ? null : api(k);
-        String thread = args.path(HostActions.threadField(kind)).asText("");
-        String mine = "🤖 " + a.name + " (";
-        try {
-            String repo = r != null ? r.repo : "";
-            int number = r != null ? r.number : 0;
-            String first = api == null || thread.isBlank() ? "" : api.threadStarter(repo, number, thread);
-            return first.startsWith(mine) ? null : result("not-your-thread", Map.of());
-        } catch (IOException e) {
-            return result("failed", Map.of("host_kind", Key.kindName(kind), "detail", e.getMessage()));
         }
     }
 

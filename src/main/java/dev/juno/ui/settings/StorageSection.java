@@ -13,9 +13,8 @@ import javafx.scene.layout.GridPane;
 import javafx.scene.layout.VBox;
 
 /**
- * Settings → System settings → Storage (design §5.2): space per agent and in total (worktree, review snapshots,
- * journals and logs, earlier conversations), Remove worktree for idle agents and Clean up old data. It never deletes
- * branches, project folders or worktrees with uncommitted or unpushed work.
+ * Settings → System settings → Storage (design §5.2): space per agent and in total (journals and logs of the current
+ * and of earlier conversations) and Clean up old data. It never touches branches, project folders or worktrees.
  */
 final class StorageSection extends VBox {
     private final AppContext ctx;
@@ -34,9 +33,8 @@ final class StorageSection extends VBox {
         Ui.withTip(clean, "Applies the conversation limits now: each agent keeps its last " + Conversations.KEEP
                 + " earlier conversations, none older than " + Conversations.MAX_DAYS + " days. Claude Code's own "
                 + "transcripts are not touched.");
-        getChildren().addAll(Ui.dim("Space used by each agent. Remove worktree is for idle agents with nothing "
-                + "uncommitted or unpushed; the worktree comes back on its branch with the agent's next message. "
-                + "Branches and project folders are never deleted."), table, total, Ui.row(refresh, clean), message);
+        getChildren().addAll(Ui.dim("Space used by each agent's conversations (journals and logs). Project folders, "
+                + "branches and worktrees are never touched."), table, total, Ui.row(refresh, clean), message);
         refresh();
     }
 
@@ -52,7 +50,7 @@ final class StorageSection extends VBox {
 
     private void show(List<AgentRuntime.AgentStorage> rows) {
         table.getChildren().clear();
-        String[] heads = {"Agent", "Worktree", "Review snapshots", "Current conversation", "Earlier conversations", "Total", ""};
+        String[] heads = {"Agent", "Current conversation", "Earlier conversations", "Total"};
         for (int c = 0; c < heads.length; c++) {
             Label h = new Label(heads[c]);
             h.getStyleClass().add("dim");
@@ -64,29 +62,14 @@ final class StorageSection extends VBox {
             Label name = new Label(s.agent().name);
             name.setStyle("-fx-text-fill: " + s.agent().colour + ";");
             table.add(name, 0, r);
-            table.add(new Label(s.hasWorktree() ? bytes(s.worktree()) : "—"), 1, r);
-            table.add(new Label(bytes(s.snapshots())), 2, r);
-            table.add(new Label(bytes(s.current())), 3, r);
-            table.add(new Label(bytes(s.earlier())), 4, r);
-            table.add(new Label(bytes(s.total())), 5, r);
-            if (s.hasWorktree()) {
-                Button remove = Ui.button("Remove worktree", () -> removeWorktree(s));
-                remove.setDisable(!s.canRemove());
-                if (!s.canRemove()) Ui.withTip(remove, s.why());
-                Label note = s.stale() ? Ui.label("⚠ untouched for 14+ days", "warn") : new Label();
-                table.add(new javafx.scene.layout.HBox(8, remove, note), 6, r);
-            }
+            table.add(new Label(bytes(s.current())), 1, r);
+            table.add(new Label(bytes(s.earlier())), 2, r);
+            table.add(new Label(bytes(s.total())), 3, r);
             sum += s.total();
             r++;
         }
         if (rows.isEmpty()) table.add(Ui.dim("No agents yet."), 0, 1);
         total.setText("Total: " + bytes(sum));
-    }
-
-    private void removeWorktree(AgentRuntime.AgentStorage s) {
-        String err = ctx.runtime.removeWorktree(s.agent());
-        message.setText(err == null ? "Removed " + s.agent().name + "'s worktree." : err);
-        refresh();
     }
 
     private void cleanUp() {

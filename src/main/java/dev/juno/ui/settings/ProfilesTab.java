@@ -37,7 +37,7 @@ public final class ProfilesTab extends BorderPane {
     private final TextField maxTurns = new TextField();
     private final TextField spend = new TextField();
     private final CheckBox needsFolder = new CheckBox("Its agents won't start without a project");
-    private final CheckBox editsFiles = new CheckBox("Its agents get their own worktree");
+    private final CheckBox editsFiles = new CheckBox("Its agents edit files (project build & test commands are allowed for them)");
     private final ListView<ProfileCommand> commandList = new ListView<>();
     private final TextField commandName = new TextField();
     private final TextArea commandTemplate = new TextArea();

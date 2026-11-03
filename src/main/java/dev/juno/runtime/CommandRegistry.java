@@ -59,15 +59,11 @@ public final class CommandRegistry {
                     "Clear the pane (the log is kept).", "/clear"),
             new Command("help", "/help", Scope.ANY_PANE,
                     "Commands available here.", "/help"),
-            new Command("getcontextfrom", "/getcontextfrom<name>", Scope.JUNO_ONLY,
-                    "That agent's context summary.", "/getcontextfrombob"),
             new Command("assign", "/assign<name> <task>", Scope.JUNO_ONLY,
                     "Give a task through Juno without spending her tokens; she tracks the result.",
                     "/assignbob fix the failing login test"),
             new Command("status", "/status", Scope.JUNO_ONLY,
-                    "Every agent: status, project, current task, context %.", "/status"),
-            new Command("broadcast", "/broadcast <text>", Scope.JUNO_ONLY,
-                    "Message every agent.", "/broadcast stop touching the build files")));
+                    "Every agent: status, project, current task, context %.", "/status")));
 
     private CommandRegistry() {}
 

@@ -44,22 +44,22 @@ class SkillsTest {
 
         SkillResolver r = new SkillResolver(lib);
         List<String> coder = r.enabledIn(sp, "coder");
-        assertFalse(coder.contains("using-git-worktrees"));
-        assertEquals(all.size() - 1, coder.size());
+        assertTrue(coder.contains("using-git-worktrees"), "coders make their own worktrees");
+        assertEquals(all.size(), coder.size());
         assertEquals(List.of("brainstorming", "using-superpowers", "writing-plans"),
                 r.enabledIn(sp, "planner").stream().sorted().toList());
-        assertTrue(r.enabledIn(sp, "reviewer").isEmpty());
+        assertTrue(r.enabledIn(sp, "searcher").isEmpty());
 
         // Other built-ins never get a bundled pack, even if old data says so.
-        sp.profiles.add("reviewer");
-        assertTrue(r.enabledIn(sp, "reviewer").isEmpty());
-        assertFalse(r.assigned(sp, "reviewer"));
+        sp.profiles.add("searcher");
+        assertTrue(r.enabledIn(sp, "searcher").isEmpty());
+        assertFalse(r.assigned(sp, "searcher"));
         dev.juno.model.Profile mine = new dev.juno.model.Profile();
         mine.name = "my coder";
         assertTrue(r.assignable(sp, mine));
-        assertFalse(r.assignable(sp, dev.juno.model.BuiltInProfiles.create().get(2)));
+        assertFalse(r.assignable(sp, dev.juno.model.BuiltInProfiles.create().get(3)));
         assertTrue(r.assignable(sp, dev.juno.model.BuiltInProfiles.create().get(1)));
-        sp.profiles.remove("reviewer");
+        sp.profiles.remove("searcher");
 
         // Own profiles may get the pack with any selection; locked ones can't be changed by the user's data.
         sp.profiles.add("my coder");

@@ -14,11 +14,9 @@ public final class TokenPermissions {
 
             Repository permissions:
             • Metadata: read (always on)
-            • Contents: read and write (read is enough for a reviewer)
+            • Contents: read and write
             • Pull requests: read and write
-            • Actions: read
-            • Commit statuses: read
-            • Administration: read (optional; lets Juno see which checks are required)
+            • Issues: read (so agents can read issues you paste)
 
             An organisation may have to approve the token before it works.""";
 
@@ -28,8 +26,8 @@ public final class TokenPermissions {
             MCP token: a fine-grained personal access token with the MCP tool resource and the Execute permission. \
             Legacy personal, project and group tokens are refused by the MCP server, even with the api scope.
 
-            Git and REST token (git over HTTPS, pipeline status): a personal, project or group access token with the \
-            scopes api, read_repository and write_repository (a reviewer needs api and read_repository only).
+            Git and REST token (git over HTTPS and the Test button): a personal, project or group access token with the \
+            scopes api, read_repository and write_repository.
 
             Self-managed GitLab needs 18.3 or later with the MCP server enabled.""";
 }

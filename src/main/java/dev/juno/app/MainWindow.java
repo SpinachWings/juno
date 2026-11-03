@@ -8,6 +8,7 @@ import dev.juno.ui.board.BoardView;
 import dev.juno.ui.board.FilterList;
 import dev.juno.ui.board.Inbox;
 import dev.juno.ui.notes.NotesView;
+import dev.juno.ui.prs.PrsView;
 import dev.juno.ui.pane.AgentPane;
 import java.util.List;
 import javafx.application.Platform;
@@ -34,6 +35,7 @@ public final class MainWindow {
     private final FilterList filter;
     private final Inbox inbox;
     private final NotesView notesView;
+    private final PrsView prsView;
     private final BorderPane boardArea;
 
     public MainWindow(AppContext ctx, Stage stage) {
@@ -43,6 +45,7 @@ public final class MainWindow {
         this.filter = new FilterList(ctx, board);
         this.inbox = new Inbox(ctx, board);
         this.notesView = new NotesView(ctx, board);
+        this.prsView = new PrsView(ctx);
 
         Label logo = new Label("JUNO");
         logo.getStyleClass().add("logo");
@@ -50,6 +53,7 @@ public final class MainWindow {
         ToggleGroup view = new ToggleGroup();
         ToggleButton boardToggle = new ToggleButton("Board");
         ToggleButton notes = new ToggleButton("Notes");
+        ToggleButton prs = new ToggleButton("PRs");
         Button add = Ui.button("+ New agent", () -> {
             boardToggle.setSelected(true);
             board.addAgent();
@@ -58,12 +62,20 @@ public final class MainWindow {
 
         boardToggle.setToggleGroup(view);
         notes.setToggleGroup(view);
+        prs.setToggleGroup(view);
         boardToggle.setSelected(true);
         Ui.withTip(notes, "Your notes: a file tree, Markdown editor with live preview, and one agent beside them.");
         view.selectedToggleProperty().addListener((o, a, b) -> {
             if (b == null) a.setSelected(true);
-            else showNotes(b == notes);
+            else show(b == notes ? View.NOTES : b == prs ? View.PRS : View.BOARD);
         });
+        Ui.withTip(prs, "The PRs and MRs your agents opened. Entries stay until you close them.");
+        ctx.runtime.addListener(new AgentRuntime.Listener() {
+            @Override public void prsChanged() {
+                Platform.runLater(() -> prs.setText(prsLabel()));
+            }
+        });
+        prs.setText(prsLabel());
         board.onShowRequested(() -> boardToggle.setSelected(true));
         stage.addEventHandler(javafx.stage.WindowEvent.WINDOW_HIDING, e -> notesView.flush());
 
@@ -77,7 +89,7 @@ public final class MainWindow {
 
         Button settings = Ui.button("Settings", () -> SettingsWindow.show(ctx, stage, SettingsWindow.Page.KEYS));
 
-        HBox bar = new HBox(10, logo, add, boardToggle, notes, agentsToggle, Ui.grow(), inbox.button(), usage, settings);
+        HBox bar = new HBox(10, logo, add, boardToggle, notes, prs, agentsToggle, Ui.grow(), inbox.button(), usage, settings);
         bar.setAlignment(Pos.CENTER_LEFT);
         bar.getStyleClass().add("toolbar-bar");
 
@@ -96,14 +108,28 @@ public final class MainWindow {
         if (ctx.runtime.agents().isEmpty()) board.addAgent();
     }
 
-    /** Switches between the board and the notepad; leaving the notepad saves it and gives the lent pane back. */
-    private void showNotes(boolean notes) {
-        if (notes) {
-            root.setCenter(notesView.root());
-            notesView.show();
-        } else {
-            notesView.leave();
-            root.setCenter(boardArea);
+    private enum View { BOARD, NOTES, PRS }
+
+    private View showing = View.BOARD;
+
+    private String prsLabel() {
+        return prsView.count() == 0 ? "PRs" : "PRs (" + prsView.count() + ")";
+    }
+
+    /** Switches between the board, the notepad and the PRs tab; leaving the notepad saves it and returns the lent pane. */
+    private void show(View v) {
+        if (showing == View.NOTES && v != View.NOTES) notesView.leave();
+        showing = v;
+        switch (v) {
+            case NOTES -> {
+                root.setCenter(notesView.root());
+                notesView.show();
+            }
+            case PRS -> {
+                prsView.refresh();
+                root.setCenter(prsView.root());
+            }
+            default -> root.setCenter(boardArea);
         }
     }
 

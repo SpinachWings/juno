@@ -34,7 +34,7 @@ public final class AgentPrompts {
         return systemPrompt(s, a, profile, project, folder, "");
     }
 
-    /** {@code branch} is the agent's own worktree branch, or blank when it works in the project folder itself. */
+    /** {@code branch}: the branch checked out in the folder, or blank when it is not a git repository (design §7.8). */
     public static String systemPrompt(Settings s, Agent a, Profile profile, Project project, Path folder, String branch) {
         return systemPrompt(s, a, profile, project, folder, branch, "- Juno (`orchestrator`)");
     }
@@ -52,6 +52,7 @@ public final class AgentPrompts {
         v.put("project", project == null ? "" : project.name);
         v.put("folder", folder.toString());
         v.put("branch", branch);
+        v.put("git_repo", !branch.isBlank());
         v.put("host_access", hostAccess);
         v.put("contacts", contacts);
         v.put("report_length", s.system.reportLength);
@@ -74,7 +75,7 @@ public final class AgentPrompts {
 
     public static String folderSet(Project p, Path folder, String branch) {
         return Prompts.render(Prompts.load("wrappers/folder-set.md"),
-                Map.of("project", p.name, "folder", folder.toString(), "branch", branch)).trim();
+                Map.of("project", p.name, "folder", folder.toString(), "branch", branch, "git_repo", !branch.isBlank())).trim();
     }
 
     public static String profileCommand(Settings s, Agent a, Project project, String template, String args) {
@@ -141,6 +142,11 @@ public final class AgentPrompts {
         if (!base.endsWith("/")) base += "/";
         return p.toLowerCase(java.util.Locale.ROOT).startsWith(base.toLowerCase(java.util.Locale.ROOT))
                 ? p.substring(base.length()) : path;
+    }
+
+    /** The whole text on one line (whitespace collapsed): for text the user reads, which is never cut short. */
+    public static String oneLine(String s) {
+        return s == null ? "" : s.strip().replaceAll("\\s+", " ");
     }
 
     static String firstLine(String s, int max) {

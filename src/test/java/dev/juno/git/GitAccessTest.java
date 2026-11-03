@@ -88,7 +88,7 @@ class GitAccessTest {
     @Test
     void nothingIsWrittenIntoGitConfigOrRemotes() throws Exception {
         String before = git(repo, "config", "--list", "--local");
-        Git.run(repo, GitAccess.forJuno("github.com", false, "secret-token"), 30, "fetch", "-q", "origin");
+        Git.run(repo, GitAccess.forAgent(List.of("github.com"), "helper.sh"), 30, "ls-remote", "--get-url", "origin");
         assertEquals(before, git(repo, "config", "--list", "--local"));
         assertFalse(git(repo, "remote", "-v").contains("secret"));
     }
@@ -98,69 +98,5 @@ class GitAccessTest {
         assertEquals("github.com", GitAccess.parseHost("protocol=https\nhost=github.com\n"));
         assertEquals("", GitAccess.parseHost("protocol=http\nhost=github.com\n"));
         assertEquals("", GitAccess.parseHost("host=github.com\n"));
-    }
-
-    private Snapshots.Request request(Path folder, String source, String sha) {
-        return new Snapshots.Request(repo, folder, source, "rev1", 7, sha, git1("HEAD"), "refs/pull/7/head", "main",
-                GitAccess.forJuno("github.com", false, "t"));
-    }
-
-    private String git1(String rev) {
-        try {
-            return git(repo, "rev-parse", rev);
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
-    }
-
-    @Test
-    void aLocalCommitNeedsNoFetchAndTheSnapshotIsDetached() throws Exception {
-        Path folder = Snapshots.folder(dir.resolve("review"), "rev1", 7, head);
-        Snapshots.create(request(folder, "no-such-remote", head));
-        assertEquals("HEAD", git(folder, "rev-parse", "--abbrev-ref", "HEAD"));
-        assertEquals(head, git(folder, "rev-parse", "HEAD"));
-        assertEquals("main", git(repo, "rev-parse", "--abbrev-ref", "HEAD"), "the checkout is untouched");
-        Snapshots.remove(folder, "rev1", 7);
-        assertFalse(Files.exists(folder));
-        assertFalse(git(repo, "worktree", "list").contains(folder.getFileName().toString()));
-    }
-
-    @Test
-    void aPrHeadFromElsewhereIsFetchedUnderItsOwnRefAndGoesWithTheSnapshot() throws Exception {
-        // Someone else's commit: only on the remote, under the PR's ref.
-        Path other = dir.resolve("other");
-        git(dir, "clone", "-q", origin.toString(), other.toString());
-        git(other, "config", "user.name", "o");
-        git(other, "config", "user.email", "o@example.com");
-        Files.writeString(other.resolve("b.txt"), "two\n");
-        git(other, "add", ".");
-        git(other, "commit", "-m", "two");
-        String sha = git(other, "rev-parse", "HEAD");
-        git(other, "push", "-q", "origin", "HEAD:refs/pull/7/head");
-        assertFalse(Snapshots.hasCommit(repo, sha));
-
-        String source = Snapshots.source(repo, "github.com", "owner/repo");
-        assertEquals("origin", source);
-        Path folder = Snapshots.folder(dir.resolve("review"), "rev1", 7, sha);
-        String branchesBefore = git(repo, "branch", "--list");
-        Snapshots.create(request(folder, source, sha));
-        assertEquals(sha, git(folder, "rev-parse", "HEAD"));
-        assertEquals(sha, git(repo, "rev-parse", "refs/juno/review/rev1/7"));
-        assertEquals(branchesBefore, git(repo, "branch", "--list"), "never the user's branches");
-
-        Snapshots.remove(folder, "rev1", 7);
-        assertThrows(IOException.class, () -> git(repo, "rev-parse", "--verify", "--quiet", "refs/juno/review/rev1/7"));
-    }
-
-    @Test
-    void aRemoteThatIsntTheRepositoryIsntUsed() {
-        assertEquals("https://github.com/acme/other.git", Snapshots.source(repo, "github.com", "acme/other"));
-    }
-
-    @Test
-    void aSnapshotsNameComesBackApart() {
-        assertEquals("rev1", Snapshots.parseName("rev1-7-abcdef0123")[0]);
-        assertEquals("7", Snapshots.parseName("rev1-7-abcdef0123")[1]);
-        assertEquals(null, Snapshots.parseName("something-else"));
     }
 }

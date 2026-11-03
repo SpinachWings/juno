@@ -105,11 +105,6 @@ public final class Orchestration {
     }
 
     Reply call(String agentId, String tool, JsonNode args) {
-        // It talks to the host, so not under the lock.
-        if (tool.equals("start_review")) {
-            return need(args, "target") != null ? missing(args, "target")
-                    : rt.reviews().start(agentId, args.path("target").asText());
-        }
         synchronized (rt) {
             LiveAgent l = rt.live(agentId);
             if (l == null) return Reply.refused(result("common", "call-failed", Map.of("reason", "this agent no longer exists")));
@@ -122,14 +117,11 @@ public final class Orchestration {
                 case "request_folder" -> Reply.ok(rt.requestFolder(agentId, args.path("reason").asText("")));
                 case "assign_task" -> need(args, "to", "task") != null ? missing(args, "to", "task")
                         : assignTask(args.path("to").asText(), args.path("task").asText(), args.path("fresh").asBoolean(false));
-                case "get_agent_output" -> need(args, "name") != null ? missing(args, "name")
-                        : output(args.path("name").asText(), args.path("lines").asInt(100));
-                case "get_agent_context" -> need(args, "name") != null ? missing(args, "name")
-                        : context(args.path("name").asText());
+                case "hand_over" -> need(args, "to", "task") != null ? missing(args, "to", "task")
+                        : handOver(me, args.path("to").asText(), args.path("task").asText());
                 case "set_link" -> need(args, "a", "b") != null ? missing(args, "a", "b")
                         : setLink(args.path("a").asText(), args.path("b").asText(), args.path("open").asBoolean(true),
                         args.path("requested_by_user").asBoolean(false), args.path("reason").asText(""));
-                case "end_review" -> endReview(l);
                 default -> Reply.refused(result("common", "unknown-tool", Map.of("tool", tool)));
             };
         }
@@ -180,6 +172,7 @@ public final class Orchestration {
         v.put("status", x.statusText());
         v.put("context", contextPct(x));
         v.put("colour", x.colour);
+        v.put("branch", x.branch);
         return v;
     }
 
@@ -194,7 +187,12 @@ public final class Orchestration {
         StringBuilder sb = new StringBuilder();
         for (Agent x : contacts(a)) {
             sb.append("- ").append(x.name).append(" (`").append(x.profile).append('`');
-            if (!isJuno(x)) sb.append(", ").append(x.statusText());
+            if (!isJuno(x)) {
+                Project xp = rt.project(x);
+                sb.append(", ").append(x.statusText());
+                if (xp != null) sb.append(", project ").append(xp.name);
+                if (!x.branch.isBlank()) sb.append(", branch ").append(x.branch);
+            }
             sb.append(")\n");
         }
         return sb.isEmpty() ? "- (no agents yet)" : sb.toString().strip();
@@ -233,7 +231,7 @@ public final class Orchestration {
         return Reply.ok(result("send_message", "delivered", Map.of("to", target.name)));
     }
 
-    /** A message from the user to {@code a} (typed, /hey, /broadcast): its chain starts again (design §4.4). */
+    /** A message from the user to {@code a} (typed or /hey): its chain starts again (design §4.4). */
     void fromUser(Agent a, String text, String from) {
         a.hop = 0;
         for (String other : guard.reset(a.id)) {
@@ -242,14 +240,13 @@ public final class Orchestration {
         }
         if (!from.equals("user") || isJuno(a)) return;
         // A plain message to an idle agent is a direct task: it takes over from Juno's (design §4.2). To an agent
-        // that is asking or was interrupted, or reviewing (the user answers about its comments), it's an answer, and
-        // Juno's task goes on.
-        if (!a.reviewOpen && (a.status == Status.IDLE || a.status == Status.DONE)) {
+        // that is asking or was interrupted, it's an answer, and Juno's task goes on.
+        if (a.status == Status.IDLE || a.status == Status.DONE) {
             a.task = null;
             a.reportDraft = null;
             if (rt.settingsNow().system.tellJunoAboutDirectTasks) {
                 rt.notify(juno(), wrapper("note", "direct-task", Map.of("agent", a.name, "profile", a.profile,
-                        "gist", AgentPrompts.firstLine(text, 160))));
+                        "gist", AgentPrompts.oneLine(text))));
             }
         }
     }
@@ -263,13 +260,12 @@ public final class Orchestration {
         boolean cut = s.length() > max;
         me.reportDraft = cut ? s.substring(0, max) : s;
         rt.saved(me);
-        if (me.reviewOpen) return Reply.ok(result("report", "held-review", Map.of()));
         return Reply.ok(cut ? result("report", "truncated", Map.of("report_length", max)) : result("report", "sent", Map.of()));
     }
 
     /**
      * The agent's turn ended. For a Juno task: its report (what it passed to {@code report}, or once, its final reply)
-     * goes to Juno, held while a review is open. Then the next task waiting for this turn, if any. For Juno: the
+     * goes to Juno. Then the next task waiting for this turn, if any. For Juno: the
      * reports that came in while she worked, as one digest.
      */
     void turnEnded(LiveAgent l, boolean natural) {
@@ -292,8 +288,7 @@ public final class Orchestration {
                         "context_pct", contextPct(a).replace(" %", ""), "task_gist", a.task.gist,
                         "summary", summary.isBlank() ? "(no summary)" : summary,
                         "files_changed", String.join(", ", files(l, true, true)).transform(s -> s.isBlank() ? "none" : s)));
-                if (a.reviewOpen) a.heldReport = report;
-                else toJuno(report, a);
+                toJuno(report, a);
             }
             rt.saved(a);
         }
@@ -325,17 +320,28 @@ public final class Orchestration {
         rt.send(j, text, "report");
     }
 
-    private Reply endReview(LiveAgent l) {
-        Agent a = l.agent;
-        if (!a.reviewOpen) return Reply.ok(result("end_review", "none", Map.of()));
-        rt.reviews().finish(a);
-        if (a.heldReport != null) {
-            String r = a.heldReport;
-            a.heldReport = null;
-            toJuno(r, a);
+    // ---------------------------------------------------------------- hand_over (design §4.5)
+
+    /** A coder gives its work to a linked coder that is idle: the same message route and loop guard as send_message. */
+    private Reply handOver(Agent me, String to, String task) {
+        Agent t = rt.byName(to).orElse(null);
+        if (t == null) return Reply.refused(result("common", "unknown-agent", Map.of("name", to)));
+        if (t == me) return Reply.refused(result("hand_over", "self", Map.of()));
+        if (isJuno(me) || isJuno(t)) return Reply.refused(result("hand_over", "juno", Map.of()));
+        if (!store.links().linked(me.id, t.id)) {
+            rt.say(me, "✗ hand-over to " + t.name + " refused: not linked.", "warn");
+            return Reply.refused(result("hand_over", "not-linked", Map.of("to", t.name)));
         }
-        rt.saved(a);
-        return Reply.ok(result("end_review", "ended", Map.of()));
+        Profile theirs = rt.profile(t.profile);
+        if (theirs == null || !theirs.editsFiles) {
+            return Reply.refused(result("hand_over", "not-a-coder", Map.of("to", t.name, "profile", t.profile)));
+        }
+        boolean idle = (t.status == Status.IDLE || t.status == Status.DONE) && !t.turnOpen && t.pendingTasks.isEmpty();
+        if (!idle) return Reply.refused(result("hand_over", "busy", Map.of("to", t.name, "status", t.statusText())));
+        Reply sent = sendMessage(me, t.name, wrapper("handover", Map.of("from", me.name, "task", task.strip())));
+        if (sent.error()) return sent;
+        rt.say(me, "→ Handed over to " + t.name + ".", "dim");
+        return Reply.ok(result("hand_over", "delivered", Map.of("to", t.name)));
     }
 
     // ---------------------------------------------------------------- delegation (design §4.2)
@@ -426,7 +432,7 @@ public final class Orchestration {
             else rt.say(t, "Fresh start for the new task; the previous conversation is in " + t.name + "'s conversations.", "dim");
         }
         Agent.Task task1 = new Agent.Task();
-        task1.gist = AgentPrompts.firstLine(task, 160);
+        task1.gist = AgentPrompts.oneLine(task);
         task1.byUser = byUser;
         task1.at = System.currentTimeMillis();
         t.task = task1;
@@ -452,7 +458,7 @@ public final class Orchestration {
             if (task == null || task.isBlank()) return "Usage: /assign<name> <task>";
             fromUser(t, task, "assign");
             String queued = deliverTask(t, task, false, true);
-            rt.notify(juno(), wrapper("note", "assign", Map.of("agent", t.name, "gist", AgentPrompts.firstLine(task, 160))));
+            rt.notify(juno(), wrapper("note", "assign", Map.of("agent", t.name, "gist", AgentPrompts.oneLine(task))));
             rt.say(juno(), "→ Assigned to " + t.name + (queued.isEmpty() ? "" : " (" + queued + ")")
                     + ". Its report comes back here.", "info");
             return null;
@@ -667,19 +673,6 @@ public final class Orchestration {
 
     // ---------------------------------------------------------------- user commands (design §8.2)
 
-    /** /broadcast: the text to every agent, as a message from the user. Returns how many got it. */
-    public int broadcast(String text) {
-        synchronized (rt) {
-            int n = 0;
-            for (Agent a : rt.agents()) {
-                fromUser(a, text, "broadcast");
-                rt.inject(a, wrapper("broadcast", Map.of("text", text.strip())), "broadcast");
-                n++;
-            }
-            return n;
-        }
-    }
-
     /** /status: every agent's status, project, current task and context use (no tokens). */
     public String status() {
         synchronized (rt) {
@@ -699,44 +692,7 @@ public final class Orchestration {
         }
     }
 
-    // ---------------------------------------------------------------- output and context (design §8.2)
-
-    private Reply output(String name, int lines) {
-        Agent a = rt.byName(name).orElse(null);
-        if (a == null) return Reply.refused(result("common", "unknown-agent", Map.of("name", name)));
-        int n = Math.max(1, Math.min(1000, lines <= 0 ? 100 : lines));
-        List<String> out = outputLines(a);
-        if (out.isEmpty()) return Reply.ok(result("get_agent", "empty", Map.of("name", a.name)));
-        List<String> last = out.subList(Math.max(0, out.size() - n), out.size());
-        return Reply.ok(result("get_agent", "output", Map.of("count", last.size(), "name", a.name,
-                "lines", String.join("\n", last))));
-    }
-
-    /** The agent's conversation as plain lines: messages in, replies, tool calls, failed results. */
-    List<String> outputLines(Agent a) {
-        LiveAgent l = rt.live(a.id);
-        Path folder = rt.folder(a);
-        List<String> out = new ArrayList<>();
-        for (AgentEvent e : l.history()) {
-            switch (e) {
-                case AgentEvent.UserText u -> {
-                    out.add("› " + u.from() + ":");
-                    for (String s : u.text().split("\n")) out.add("  " + s);
-                }
-                case AgentEvent.Message m when m.parent() == null -> out.addAll(List.of(m.text().split("\n")));
-                case AgentEvent.ToolUse t when t.parent() == null -> out.add("⚙ " + AgentPrompts.describeTool(t, folder));
-                case AgentEvent.ToolResult r when r.parent() == null && r.error() -> out.add("✗ " + AgentPrompts.firstLine(r.text(), 200));
-                default -> { }
-            }
-        }
-        return out;
-    }
-
-    private Reply context(String name) {
-        Agent a = rt.byName(name).orElse(null);
-        if (a == null) return Reply.refused(result("common", "unknown-agent", Map.of("name", name)));
-        return Reply.ok(contextSummary(a));
-    }
+    // ---------------------------------------------------------------- context summary (design §8.2)
 
     /**
      * The context summary (design §8.2), built from the journal: instant, no tokens, nothing added to a conversation.
@@ -751,7 +707,7 @@ public final class Orchestration {
             for (AgentEvent e : l.history()) if (e instanceof AgentEvent.Usage u && u.turnTotal()) turns++;
             List<String> links = isJuno(a) ? List.of("everyone") : store.links().of(a.id).stream().map(this::name).toList();
             String summary = !a.lastReport.isBlank() ? a.lastReport
-                    : l.lastReply == null || l.lastReply.isBlank() ? "none" : AgentPrompts.firstLine(l.lastReply, 300);
+                    : l.lastReply == null || l.lastReply.isBlank() ? "none" : AgentPrompts.oneLine(l.lastReply);
             Map<String, Object> v = new HashMap<>();
             v.put("name", a.name);
             v.put("profile", a.profile);
@@ -767,14 +723,13 @@ public final class Orchestration {
             v.put("started", c != null);
             v.put("age", c == null ? "" : AgentPrompts.ago(c.started));
             v.put("turns", turns);
-            return result("get_agent", "context", v).strip();
+            return result("context", "summary", v).strip();
         }
     }
 
     private static String orNone(List<String> files) {
         if (files.isEmpty()) return "none";
-        List<String> last = files.subList(Math.max(0, files.size() - 15), files.size());
-        return (files.size() > last.size() ? "… " : "") + String.join(", ", last);
+        return String.join(", ", files);
     }
 
     /** Files the conversation changed (diffs) or read; {@code sinceTask}: only since the latest task arrived. */

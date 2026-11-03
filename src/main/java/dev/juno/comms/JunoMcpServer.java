@@ -30,7 +30,7 @@ import java.util.regex.Pattern;
  * <p>Every tool of §4.4. The app decides who may call what ({@link Calls#refusal}); {@code tools/list} shows an agent
  * only the tools it may call, and a call it may not make is refused here, whatever its prompt says.
  *
- * <p>Also, under {@code /host/<server>}, the proxy to the host's MCP servers (§6.6), and {@code /git-credential} for the
+ * <p>Also, under {@code /host/<server>}, the proxy to the host's MCP servers (§6.3), and {@code /git-credential} for the
  * per-process git credential helper (§5.1.1); the same tokens identify the agent.
  */
 public final class JunoMcpServer {
@@ -70,15 +70,13 @@ public final class JunoMcpServer {
     }
 
     public static final List<String> TOOLS = List.of("list_agents", "send_message", "report", "request_folder",
-            "assign_task", "get_agent_output", "get_agent_context", "set_link", "start_review", "end_review",
-            "request_permission");
+            "assign_task", "hand_over", "set_link", "request_permission");
     /** Tools only Juno may call, whatever a profile allows (design §4.4). */
-    public static final List<String> ORCHESTRATOR_ONLY = List.of("assign_task", "get_agent_output",
-            "get_agent_context", "set_link");
+    public static final List<String> ORCHESTRATOR_ONLY = List.of("assign_task", "set_link");
     /** Parameter types other than string, and parameters that may be left out. */
     private static final Map<String, String> TYPES = Map.of("fresh", "boolean", "open", "boolean",
-            "requested_by_user", "boolean", "lines", "integer");
-    private static final List<String> OPTIONAL = List.of("get_agent_output.lines", "set_link.reason");
+            "requested_by_user", "boolean");
+    private static final List<String> OPTIONAL = List.of("set_link.reason");
     private static final Pattern PARAM = Pattern.compile("^- `(\\w+)`: (.*)$");
 
     private final Calls calls;
@@ -116,7 +114,7 @@ public final class JunoMcpServer {
         return "http://127.0.0.1:" + http.getAddress().getPort() + "/mcp";
     }
 
-    /** The proxy's base: a server's URL is this plus its name (design §6.6). */
+    /** The proxy's base: a server's URL is this plus its name (design §6.3). */
     public String hostBase() {
         return "http://127.0.0.1:" + http.getAddress().getPort() + "/host/";
     }

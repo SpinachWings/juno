@@ -59,6 +59,11 @@ class CommsTest {
             mute.allowedTools.remove("mcp__juno__send_message");
             mute.disallowedTools.add("mcp__juno__list_agents");
             settings.profiles.add(mute);
+            Profile coder2 = settings.profiles.stream().filter(p -> p.name.equals("searcher")).findFirst().orElseThrow()
+                    .duplicate("coder2");
+            coder2.editsFiles = true;
+            coder2.allowedTools.add("mcp__juno__hand_over");
+            settings.profiles.add(coder2);
         }
         Files.createDirectories(dir.resolve("logs"));
         provider = new FakeProvider(new ClaudeCodeProvider(dir.resolve("claude"), home), dir.resolve("logs"));
@@ -118,8 +123,9 @@ class CommsTest {
         assertEquals(List.of("list_agents", "send_message", "report", "request_folder", "request_permission"),
                 toolNames(bob));
         List<String> juno = toolNames(rt.juno());
-        assertTrue(juno.containsAll(List.of("assign_task", "get_agent_output", "get_agent_context", "set_link")));
-        assertFalse(juno.contains("start_review"), "the orchestrator profile doesn't allow reviews");
+        assertEquals(List.of("list_agents", "send_message", "report", "request_folder", "assign_task", "set_link",
+                "request_permission"), juno);
+        assertFalse(juno.contains("hand_over"), "Juno assigns; coders hand over");
 
         JsonNode r = call(bob, "assign_task", "{\"to\":\"bob\",\"task\":\"x\"}");
         assertTrue(r.path("isError").asBoolean());
@@ -289,14 +295,15 @@ class CommsTest {
 
         assertNull(rt.orchestration().approveAssign(p.id, task + "\nAlso add a test.", null, false));
         assertTrue(rt.orchestration().proposals().isEmpty());
-        assertEquals("Fix the login bug. …", bob.task.gist);
+        assertEquals("Fix the login bug. CALL report {\"text\":\"Fixed on branch login-fix.\"} Also add a test.", bob.task.gist, "the gist is the whole task on one line, never cut short");
         waitUntil(() -> log(bob).contains("[Task from Juno]\nFix the login bug."));
         assertTrue(log(bob).contains("Also add a test."));
         // bob reports; the report reaches Juno as a message, after the approval outcome.
         waitUntil(() -> log(juno).contains("[Report from bob (tester) · Done · context 10 %]"));
         String got = log(juno);
         assertTrue(got.contains("[Approved] bob got the task (edited by the user)."));
-        assertTrue(got.contains("Task: Fix the login bug. …\nFixed on branch login-fix.\nFiles changed: none"));
+        assertTrue(got.contains("Task: Fix the login bug. CALL report"), "the whole task, on one line");
+        assertTrue(got.contains("Also add a test.\nFixed on branch login-fix.\nFiles changed: none"));
         assertTrue(bob.task.reported);
         assertEquals("Fixed on branch login-fix.", bob.lastReport);
     }
@@ -527,26 +534,68 @@ class CommsTest {
         assertNotNull(jim);
     }
 
-    @Test
-    void anOpenReviewHoldsTheReportUntilItEnds() throws Exception {
-        runtime();
-        Profile rev = rt.profile("tester");
-        rev.allowedTools.add("mcp__juno__end_review");
-        Agent bob = rt.create("bob", "tester", null, null);
-        bob.reviewOpen = true;
-        commands.handle(rt.juno(), "/assignbob CALL report {\"text\":\"comments posted\"}");
-        waitUntil(() -> replies(bob).contains("report: Saved. Juno gets it when your review is finished."));
-        waitUntil(() -> bob.heldReport != null);
-        assertFalse(log(rt.juno()).contains("[Report from bob"));
-        assertEquals("Review ended; snapshot removed.", text(call(bob, "end_review", "{}")));
-        waitUntil(() -> log(rt.juno()).contains("comments posted"));
-        assertEquals("You have no review open.", text(call(bob, "end_review", "{}")));
+    // ---------------------------------------------------------------- hand_over (design §4.5)
+
+    private Agent coder(String name) {
+        return rt.create(name, "coder2", null, null);
     }
 
-    // ---------------------------------------------------------------- context and output (design §8.2)
+    @Test
+    void aCoderHandsWorkToALinkedIdleCoder() throws Exception {
+        runtime();
+        Agent bob = coder("bob");
+        Agent jim = coder("jim");
+        assertTrue(toolNames(bob).contains("hand_over"));
+        assertFalse(toolNames(rt.create("sue", "tester", null, null)).contains("hand_over"));
+
+        assertEquals("You are not linked to jim. Ask Juno to link you, or ask the user.",
+                text(call(bob, "hand_over", "{\"to\":\"jim\",\"task\":\"fix login\"}")));
+        commands.handle(bob, "/cantalktojim");
+        assertEquals("You can't hand work to yourself.", text(call(bob, "hand_over", "{\"to\":\"bob\",\"task\":\"x\"}")));
+        assertTrue(text(call(bob, "hand_over", "{\"to\":\"Juno\",\"task\":\"x\"}")).contains("Juno hands out tasks herself"));
+
+        assertEquals("Handed over to jim. It will message you its result. Carry on with your own work, or finish.",
+                text(call(bob, "hand_over", "{\"to\":\"jim\",\"task\":\"fix login on branch feature/login\"}")));
+        waitUntil(() -> log(jim).contains("[Task handed over to you by bob]\nfix login on branch feature/login"));
+    }
 
     @Test
-    void contextSummariesOutputStatusAndBroadcast() throws Exception {
+    void aHandOverNeedsAnIdleCoder() throws Exception {
+        runtime();
+        Agent bob = coder("bob");
+        Agent jim = coder("jim");
+        Agent sue = rt.create("sue", "tester", null, null);
+        commands.handle(bob, "/cantalktojim");
+        commands.handle(bob, "/cantalktosue");
+        jim.turnOpen = true;
+        jim.status = Agent.Status.WORKING;
+        assertEquals("jim is not idle (Working), so nothing was sent. Try another linked agent, wait, or tell the user.",
+                text(call(bob, "hand_over", "{\"to\":\"jim\",\"task\":\"x\"}")));
+        jim.turnOpen = false;
+        jim.status = Agent.Status.AWAITING;
+        jim.reason = Agent.Reason.QUESTION;
+        assertTrue(text(call(bob, "hand_over", "{\"to\":\"jim\",\"task\":\"x\"}")).contains("not idle"));
+        assertEquals("sue is a `tester`, which doesn't edit files. Hand work only to agents that do.",
+                text(call(bob, "hand_over", "{\"to\":\"sue\",\"task\":\"x\"}")));
+        assertFalse(log(jim).contains("Task handed over"));
+    }
+
+    @Test
+    void theContactsListShowsStatusProjectAndBranch() throws Exception {
+        runtime();
+        Agent bob = coder("bob");
+        Agent jim = coder("jim");
+        jim.branch = "feature/login";
+        commands.handle(bob, "/cantalktojim");
+        assertTrue(rt.orchestration().contactsText(bob).contains("- jim (`coder2`, Idle, branch feature/login)"),
+                rt.orchestration().contactsText(bob));
+        assertTrue(text(call(bob, "list_agents", "{}")).contains("jim · coder2 · no project · Idle · branch feature/login"));
+    }
+
+    // ---------------------------------------------------------------- context summary and status (design §8.2)
+
+    @Test
+    void contextSummaryAndStatusOnly() throws Exception {
         runtime();
         Agent bob = rt.create("bob", "tester", null, null);
         Agent jim = rt.create("jim", "tester", null, null);
@@ -559,22 +608,16 @@ class CommsTest {
         assertTrue(summary.contains("Links: jim"));
         assertTrue(summary.contains("1 turns"));
         assertEquals(summary, ((PaneCommands.Outcome.Said) commands.handle(bob, "/getcontext")).text());
-        assertEquals(summary, ((PaneCommands.Outcome.Said) commands.handle(rt.juno(), "/getcontextfrombob")).text());
-        assertEquals(summary, text(call(rt.juno(), "get_agent_context", "{\"name\":\"bob\"}")));
-        assertEquals("/getcontextfrom works only in Juno's pane.", ((PaneCommands.Outcome.Said) commands.handle(bob,
-                "/getcontextfromjim")).text());
-
-        String out = text(call(rt.juno(), "get_agent_output", "{\"name\":\"bob\",\"lines\":2}"));
-        assertEquals("The last 2 lines of bob's output, newest last:\n  look at the code\nok", out);
-        assertEquals("jim has no output yet.", text(call(rt.juno(), "get_agent_output", "{\"name\":\"jim\"}")));
+        assertEquals("`/getcontextfrombob` isn't supported in Juno — see /help.",
+                ((PaneCommands.Outcome.Said) commands.handle(rt.juno(), "/getcontextfrombob")).text());
+        assertTrue(call(rt.juno(), "get_agent_context", "{\"name\":\"bob\"}").path("isError").asBoolean(), "the tool is gone");
 
         String status = ((PaneCommands.Outcome.Said) commands.handle(rt.juno(), "/status")).text();
         assertTrue(status.contains("bob · tester · Done · no project · ctx 10 % · no task from Juno"), status);
         assertTrue(status.contains("Links: bob ↔ jim"));
 
-        assertEquals("Sent to 2 agents.", ((PaneCommands.Outcome.Said) commands.handle(rt.juno(), "/broadcast stop for lunch")).text());
-        waitUntil(() -> log(jim).contains("[Message from the user to every agent]\nstop for lunch"));
-        waitUntil(() -> log(bob).contains("stop for lunch"));
+        assertEquals("`/broadcast` isn't supported in Juno — see /help.",
+                ((PaneCommands.Outcome.Said) commands.handle(rt.juno(), "/broadcast stop for lunch")).text());
     }
 
     // ---------------------------------------------------------------- helpers

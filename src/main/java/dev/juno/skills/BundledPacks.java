@@ -18,13 +18,13 @@ public final class BundledPacks {
 
     /**
      * The locked skills of a bundled pack for a built-in profile, or empty if the pack isn't locked-assigned to it.
-     * coder: everything except {@code using-git-worktrees} (Juno manages worktrees).
+     * coder: every skill, including {@code using-git-worktrees} (Juno makes no worktrees; the coder does, design §7.8).
      * planner: only {@code using-superpowers}, {@code brainstorming}, {@code writing-plans}.
      */
     public static Optional<List<String>> locked(String packId, String profile, List<String> allSkills) {
         if (!packId.equals("superpowers")) return Optional.empty();
         if (profile.equals(BuiltInProfiles.CODER))
-            return Optional.of(allSkills.stream().filter(s -> !s.equals("using-git-worktrees")).toList());
+            return Optional.of(List.copyOf(allSkills));
         if (profile.equals(BuiltInProfiles.PLANNER))
             return Optional.of(List.of("using-superpowers", "brainstorming", "writing-plans").stream()
                     .filter(allSkills::contains).toList());

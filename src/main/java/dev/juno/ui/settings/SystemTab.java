@@ -23,7 +23,6 @@ public final class SystemTab extends ScrollPane {
     private final Spinner<Integer> fresh = spinner(1, 100);
     private final Spinner<Integer> report = spinner(100, 20000);
     private final Spinner<Integer> hops = spinner(1, 100);
-    private final Spinner<Integer> pipeline = spinner(1, 1440);
     private final Spinner<Integer> maxWorking = spinner(1, 50);
     private final Spinner<Integer> idle = spinner(1, 1440);
     private final TextField notes = new TextField();
@@ -70,7 +69,6 @@ public final class SystemTab extends ScrollPane {
                 "Juno proposes a fresh start for an agent whose context passes this share of its window.");
         r = row(g, r, "Report length (characters)", report, "Reports to Juno are cut to this length.");
         r = row(g, r, "Hop limit", hops, "Agent-to-agent messages in a chain before it stops without a message from you.");
-        r = row(g, r, "Pipeline wait limit (min)", pipeline, "How long a review waits for a PR's pipelines.");
         r = row(g, r, "Max agents working at once", maxWorking, "Further agents queue. Juno and Waiting agents don't count.");
         r = row(g, r, "Idle process timeout (min)", idle, "An idle agent's process is closed; its next message resumes it.");
         box.getChildren().add(g);
@@ -123,7 +121,6 @@ public final class SystemTab extends ScrollPane {
         fresh.getValueFactory().setValue(s.freshStartThreshold);
         report.getValueFactory().setValue(s.reportLength);
         hops.getValueFactory().setValue(s.hopLimit);
-        pipeline.getValueFactory().setValue(s.pipelineWaitLimitMinutes);
         maxWorking.getValueFactory().setValue(s.maxAgentsWorking);
         idle.getValueFactory().setValue(s.idleTimeoutMinutes);
         notes.setText(s.notesFolder);
@@ -137,7 +134,6 @@ public final class SystemTab extends ScrollPane {
         s.freshStartThreshold = fresh.getValue();
         s.reportLength = report.getValue();
         s.hopLimit = hops.getValue();
-        s.pipelineWaitLimitMinutes = pipeline.getValue();
         s.maxAgentsWorking = maxWorking.getValue();
         s.idleTimeoutMinutes = idle.getValue();
         s.notesFolder = notes.getText().trim();

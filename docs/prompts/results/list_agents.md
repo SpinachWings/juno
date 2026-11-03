@@ -4,7 +4,7 @@
 or "unknown" before the agent's first reply.
 
 ## agent
-- {{name}} · {{profile}} · {{#project}}project {{project}}{{/project}}{{^project}}no project{{/project}} · {{status}} · context {{context}} · colour {{colour}}
+- {{name}} · {{profile}} · {{#project}}project {{project}}{{/project}}{{^project}}no project{{/project}} · {{status}}{{#branch}} · branch {{branch}}{{/branch}} · context {{context}} · colour {{colour}}
 
 ## reachable
 Agents you can message now:

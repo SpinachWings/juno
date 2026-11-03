@@ -32,13 +32,8 @@ public final class JunoHome {
     public Path agentRunDir(String id) { return agentDir(id).resolve("run"); }
     public Path journalsDir(String id) { return agentDir(id).resolve("journal"); }
     public Path logsDir(String id) { return agentDir(id).resolve("logs"); }
-    /** Agents' git worktrees, {@code worktrees/<agent id>} (design §7.8). */
-    public Path worktreesDir() { return root.resolve("worktrees"); }
-    public Path worktree(String agentId) { return worktreesDir().resolve(agentId); }
-    /** Per-worktree git hooks (outside the worktree, so a checkout never contains them). */
-    public Path worktreeHooks(String agentId) { return worktreesDir().resolve(agentId + ".hooks"); }
-    /** Review snapshots, {@code review/<agent id>-<pr>-<commit>} (design §6.3). */
-    public Path reviewDir() { return root.resolve("review"); }
+    /** PRs/MRs agents opened, until closed in the PRs tab (design §7.11). */
+    public Path prsFile() { return root.resolve("prs.json"); }
     public Path layoutFile() { return root.resolve("layout.json"); }
     /** The notepad's open tabs and view (design §9). */
     public Path notesStateFile() { return root.resolve("notes.json"); }

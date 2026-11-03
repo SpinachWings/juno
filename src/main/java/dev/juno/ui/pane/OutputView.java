@@ -24,12 +24,16 @@ import org.fxmisc.richtext.model.StyleSpansBuilder;
 public final class OutputView {
     private record Action(int start, int end, Runnable run) {}
 
+    private record Tip(int start, int end, String text) {}
+
     private final StyleClassedTextArea area = new StyleClassedTextArea();
     private final VirtualizedScrollPane<StyleClassedTextArea> scroll = new VirtualizedScrollPane<>(area);
     private final OutputModel model;
     private final List<Integer> offsets = new ArrayList<>();
     private final List<Integer> paragraphs = new ArrayList<>();
     private final List<Action> actions = new ArrayList<>();
+    private final List<Tip> tips = new ArrayList<>();
+    private final javafx.scene.control.Tooltip tipPopup = new javafx.scene.control.Tooltip();
     private final PauseTransition throttle = new PauseTransition(Duration.millis(60));
     private boolean scheduled;
     private Runnable onUserScroll = () -> {};
@@ -68,6 +72,20 @@ public final class OutputView {
                 a.run().run();
             }
         });
+        tipPopup.setWrapText(true);
+        tipPopup.setMaxWidth(560);
+        area.setMouseOverTextDelay(java.time.Duration.ofMillis(400));
+        area.addEventHandler(org.fxmisc.richtext.event.MouseOverTextEvent.MOUSE_OVER_TEXT_BEGIN, e -> {
+            int i = e.getCharacterIndex();
+            for (Tip t : tips) {
+                if (i >= t.start() && i < t.end()) {
+                    tipPopup.setText(t.text());
+                    tipPopup.show(area, e.getScreenPosition().getX() + 8, e.getScreenPosition().getY() + 12);
+                    return;
+                }
+            }
+        });
+        area.addEventHandler(org.fxmisc.richtext.event.MouseOverTextEvent.MOUSE_OVER_TEXT_END, e -> tipPopup.hide());
         area.setOnMouseMoved(e -> area.setCursor(actionAt(e.getX(), e.getY()) != null ? Cursor.HAND : Cursor.TEXT));
         area.addEventHandler(javafx.scene.input.ScrollEvent.SCROLL, e -> onUserScroll.run());
         MenuItem copy = new MenuItem("Copy");
@@ -138,6 +156,7 @@ public final class OutputView {
         while (paragraphs.size() > from) paragraphs.remove(paragraphs.size() - 1);
         final int s0 = start;
         actions.removeIf(a -> a.start() >= s0);
+        tips.removeIf(t -> t.start() >= s0);
 
         StyledDoc doc = new StyledDoc();
         for (int i = from; i < model.blocks.size(); i++) {
@@ -155,6 +174,7 @@ public final class OutputView {
         int last = area.getParagraphs().size() - 1;
         if (last >= 0 && area.getParagraph(last).length() == 0) area.setParagraphStyle(last, Collections.emptyList());
         for (StyledDoc.Action a : doc.actions) actions.add(new Action(a.start() + start, a.end() + start, a.run()));
+        for (StyledDoc.Tip t : doc.tips) tips.add(new Tip(t.start() + start, t.end() + start, t.text()));
         if (atBottom) Platform.runLater(this::scrollToEnd);
     }
 

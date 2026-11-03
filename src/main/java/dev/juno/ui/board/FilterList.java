@@ -27,7 +27,7 @@ import javafx.scene.layout.VBox;
  * when they need you; showing one puts it back where it was. Juno can't be hidden.
  */
 public final class FilterList {
-    private static final List<String> FILTERS = List.of("All", "Unread", "Idle", "Queued", "Working", "Waiting",
+    private static final List<String> FILTERS = List.of("All", "Unread", "Idle", "Queued", "Working",
             "Awaiting decision", "Done");
 
     private final AppContext ctx;
@@ -107,7 +107,6 @@ public final class FilterList {
             case "Idle" -> a.status == Agent.Status.IDLE;
             case "Queued" -> a.status == Agent.Status.QUEUED;
             case "Working" -> a.status == Agent.Status.WORKING;
-            case "Waiting" -> a.status == Agent.Status.WAITING;
             case "Awaiting decision" -> a.status == Agent.Status.AWAITING;
             case "Done" -> a.status == Agent.Status.DONE;
             default -> true;

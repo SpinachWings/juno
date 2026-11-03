@@ -14,7 +14,6 @@ public class SystemSettings {
     public int freshStartThreshold = 60;
     public int reportLength = 800;
     public int hopLimit = 10;
-    public int pipelineWaitLimitMinutes = 60;
     public int maxAgentsWorking = 4;
     public int idleTimeoutMinutes = 10;
     public String notesFolder = "";

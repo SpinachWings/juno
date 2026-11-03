@@ -1,5 +1,93 @@
 # Progress
 
+## Milestone 6b: changes after the notepad. Done (2026-11-03)
+
+A change request between Milestone 6 and 7 (ten items). `docs/design.md`, `docs/prompts/`, `CLAUDE.md` and the tests were
+changed with the code; the older sections below that describe removed things (reviews, worktrees, `get_agent_output`…)
+are history.
+
+### Removed
+- **Reviewer and notes writer profiles**, and everything only they used: `runtime.Reviews`, `git.Snapshots`,
+  `comms.Pipelines`, `start_review` / `end_review`, `Agent.Review` / `reviewOpen` / `heldReport` / `staleSnapshots`, the
+  held report, the **Waiting ⏳** status, the pipeline wait limit setting, the pipeline card and inbox section, the
+  proxy's posting gates and its review / resolve / approve / request-changes / merge / close / edit actions, the REST
+  clients' pipeline, checks and thread code (what is left of `HostApi`, `GitHubApi`, `GitLabApi` is the key Test), the
+  token permissions for Actions, Commit statuses and Administration, and their prompts, tests and screenshot driver.
+- **Juno-managed worktrees and protected-branch hooks** (`git.Worktrees`, `git.GuardHook`, the Storage worktree columns
+  and "Remove worktree", the per-process identity in git config, `Agent.baseBranch` / `prBases`). Every agent works in its
+  project's folder.
+- **Juno's** `get_agent_output`, `get_agent_context`, `/getcontextfrom` and `/broadcast`. She keeps `set_link`,
+  `assign_task`, `list_agents`, `report`, `/status`, `/assign`, `/hey`; `/getcontext` (the user's own summary) stays.
+
+### Added
+- **Coder prompt** (item 3, 4, 5, 6, 9): git check first, never `git init`; one ❓ question for *source branch + new
+  branch* or *an existing branch*; explicit yes before committing on the default branch; coordination rules (different
+  branches in a shared folder → its own `using-git-worktrees` worktree inside the project; same branch → announce files,
+  ask before touching a claimed file, small commits, pull before push); hand-over; read pasted issues first.
+  `using-git-worktrees` is now one of the coder's superpowers skills.
+- **`/checkformergeconflicts`** (profile command of the coder): asks the host whether the PR/MR has conflicts, merges the
+  base locally, asks per conflicted file (resolve as proposed / differently / mine / theirs / abort), then builds, commits
+  the merge and pushes normally. `/checkforcomments` is unchanged (it already named the host generically).
+- **`hand_over(to, task)`** (coder): a linked agent that edits files and is Idle or Done with nothing queued; the task
+  arrives as `[Task handed over to you by <name>]`; the result comes back by `send_message`. Same route and loop guard as
+  `send_message`.
+- **Coordination data:** the preamble's contacts list and `list_agents` show each agent's status, project and branch.
+- **Git state in the system prompt:** the branch checked out (or "not a git repository") when the process starts.
+- **Host proxy**: only read, open and reply exist (`HostActions`); reading includes issues (`issue_read` etc.), so the
+  planner got `host:read` (it needs a key on its agent like any agent that uses the host).
+- **PRs tab** (`ui.prs.PrsView`, `store.PrStore`, `model.PullRequestEntry`, `~/.juno/prs.json`): opening a PR/MR through the
+  proxy adds an entry (repo, number, title, branch, link, agent); Open / Copy link / Close; closing never touches the host.
+- **Agents whose profile is gone** wait at **Awaiting decision ⚙** with a profile picker in the pane (`Reason.PROFILE`,
+  `AgentRuntime.setProfile`); nothing else about them changes. A saved status `WAITING` reads back as Idle.
+  Own profiles lose the rules of removed tools and actions on load (`SettingsStore.RETIRED_RULES`).
+- **Tooltips on shortened text** (item 10): one scene-wide filter (`Ui.truncationTips`, installed by `Theme.apply`, dialogs
+  and the inbox popup) shows the whole text of any label, button, tab, list or tree row that JavaFX cuts with an ellipsis,
+  unless it has a tooltip of its own. The cuts Juno made itself were replaced: the inbox and permission cards now hold
+  the whole text in a height-limited label; the output view's cut lines (error, sub-agent task, permission detail, the
+  " …" of multi-line commands) carry the full text in a hover tip (`StyledDoc.shortened` / `tip`); stored text the user
+  sees (first task, summaries, failure details, gists, rule reasons, context summary lists) is kept whole on one line
+  instead of cut. Text cut for the **agent** (resume recap, tool descriptions in recaps) is unchanged.
+
+### Checked
+- `mvn verify`: 138 tests. New or rewritten: `HostLogicTest` (proxy actions, PRs entries from GitHub and GitLab answers,
+  Test lines), `CommsTest` (hand-over rules, contacts with branch, tool lists), `BoardRuntimeTest` (project folder, missing
+  profile, `WAITING` read back), `PromptsAndProfilesTest`, `SettingsStoreTest` (dropped profiles and retired rules),
+  `PrStoreTest`, `StyledDocTest`.
+- Real window (`dev.juno.ui.ChangeScreens`, scratch home): the PRs tab with two entries and closing one (list and file
+  agree), an agent with a removed profile (card and status), a cut label getting its whole text as a tooltip and losing it
+  when it fits.
+- Real Claude Code 2.1.314, haiku / low (`dev.juno.runtime.CoderLive`, scratch repository): in a git repository the coder
+  asked for the branch and created nothing first; in a folder without git it said so, didn't run or offer `git init`, and
+  created nothing; given "new branch feature_123 from main" it made the branch, the file and the commit.
+
+### Not verified
+- `/checkformergeconflicts`, `hand_over` and issue reading against real hosts or models (hand-over is tested with the fake
+  provider); GitHub's `issue_read` / `mergeable_state` and everything on GitLab are from documentation. The key Test now
+  also reads issues on both hosts.
+- Hovering the tooltips with a real mouse (the filter was driven with a synthetic event).
+- The old `docs/progress.md` text below still describes the removed parts.
+
+### Decisions (not in the spec)
+1. Branch ask is **prompt only** (your call); there is no hard guard against committing on the default branch now.
+2. Agents with a removed profile **wait for you to pick another** (your call); nothing is deleted.
+3. A PR/MR is listed when the host's answer to the open call comes back successfully; a missing link still gives an entry.
+4. `hand_over` needs the target to edit files (a coder-like profile) and be idle; Done counts as idle. The task does not
+   replace Juno's task on the target; the target reports back with `send_message`, not `report`.
+5. `/diff` shows the project folder's uncommitted changes; "files changed" in reports comes from the agent's own edits.
+6. Git identity for a key is passed as `GIT_AUTHOR_*` / `GIT_COMMITTER_*` in the process environment.
+7. `Task.gist` and conversation summaries are now the whole text on one line; the inbox / pane shorten them with a tooltip.
+8. Design sections: reviews (§6.3–§6.5) are gone; the host proxy became §6.3; the PRs tab is §7.11; §7.8 is "Git, branches
+   and sharing a folder".
+
+### Known issues
+- Two coders in one folder rely on the prompt and on messages; nothing stops one from switching the other's branch.
+- The ⚙ glyph is used for "profile" because the 🧩 glyph is missing from the monospace font.
+- The Test button's write check still names "Comment and open PRs" for a review-write permission probe.
+
+### For the next milestone (7)
+- Read `docs/design.md` against this (it was rewritten for 6b); `docs/build-prompts.md` Milestones 3–5 are history.
+- `NotesScreens`, `ChangeScreens`, `BoardScreens` (layout, crash) and `CoderLive` are the live-check drivers.
+
 ## Milestone 6: notepad. Done (2026-11-02)
 
 ### Done

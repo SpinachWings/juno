@@ -29,7 +29,6 @@ and the lessons in §12.
 | **Project** | A local repository folder, optionally with one GitHub or GitLab remote (§5.3). |
 | **Agent** | A running instance of a profile, optionally on a project. One pane on the board, with its own name, colour and conversation. |
 | **Juno** | The one orchestrator agent (built-in `orchestrator` profile). Always present; can't be deleted or hidden. |
-| **Worktree** | A separate `git worktree` checkout with its own branch, so agents that edit files never share a folder (§7.8). |
 | **Key** | A GitHub or GitLab token (§5.1). |
 | **Link** | Two-way permission for two non-Juno agents to message each other (§4.1). |
 | **Context** | What an agent's conversation holds, in tokens, against its model's window. |
@@ -42,11 +41,10 @@ There are no organisations.
 | **Idle** | Nothing to do. New agents start here; Done returns here after 15 minutes (fixed). |
 | **Queued** | Has work but "max agents working at once" is reached; shows its place ("Queued · 2nd"). |
 | **Working** | Busy with a message or task. |
-| **Waiting ⏳** | Waiting on something outside Juno, e.g. a PR's pipelines ("⏳ pipelines on #42 · 12 min"). Spends no tokens; its process may be closed meanwhile. |
-| **Awaiting decision** | Needs you, always with a reason tag: ❓ question · 🔐 permission · 📁 folder · 🔑 key · ⚠ failed · ⏸ interrupted. |
+| **Awaiting decision** | Needs you, always with a reason tag: ❓ question · 🔐 permission · 📁 folder · 🔑 key · ⚙ profile (its profile was removed: pick another) · ⚠ failed · ⏸ interrupted. |
 | **Done** | Just finished its task. |
 
-Juno and Waiting agents never count towards "max agents working at once"; Juno is never queued.
+Juno never counts towards "max agents working at once" and is never queued.
 
 **Unread:** a separate dot (pane top bar and filter list) when something happened in a pane since you last looked —
 finished, asked, reported, failed. Cleared by clicking into or scrolling the pane; survives Done → Idle.
@@ -86,10 +84,7 @@ Conversations list (§7.9).
 
 ### 4.3 Keeping Juno's context small
 - When an agent finishes or gets stuck on one of Juno's tasks, Juno gets a **capped report**: status, a summary of at
-  most **Report length** characters (default 800), files changed, context use. She can fetch more with
-  `get_agent_output`.
-- An agent with a **review open** (between `start_review` and `end_review`, any profile) reports only when the review
-  is finished (comments posted, declined or cancelled) — not while waiting for pipelines or your approval.
+  most **Report length** characters (default 800), files changed, context use. To see more, you open the agent's pane.
 - Reports arriving while Juno works are batched into one digest for when she's next idle.
 - Agent-to-agent traffic never enters Juno's context unless she's part of it.
 - Juno has her own context meter; `/compact` and `/new` work on her too.
@@ -99,7 +94,7 @@ A local MCP server (HTTP on `127.0.0.1`, random token per launch) that every age
 only way agents reach each other, and **the server enforces every rule in §4** — a call that breaks one is refused,
 whatever a prompt says.
 
-An agent may call a Juno tool only if its **profile's allowed tools** include it (e.g. `mcp__juno__start_review`); the
+An agent may call a Juno tool only if its **profile's allowed tools** include it (e.g. `mcp__juno__hand_over`); the
 server refuses it otherwise. Orchestrator-only tools work only for Juno.
 
 | Tool | Allowed by default to | What |
@@ -109,10 +104,8 @@ server refuses it otherwise. Orchestrator-only tools work only for Juno.
 | `report(text)` | every profile | Sends a result or question to whoever assigned the current task. |
 | `request_folder(reason)` | every profile | Asks you to give the agent a project (§7.7). |
 | `assign_task(to, task, fresh)` | orchestrator only | Hands an agent a task (held for approval when required, or sent after a short wait in which you can undo it, §4.2); its result is reported back automatically. |
-| `get_agent_output(name, lines)` | orchestrator only | Recent output of an agent. |
-| `get_agent_context(name)` | orchestrator only | An agent's context summary (§8.2). |
 | `set_link(a, b, open, requested_by_user)` | orchestrator only | Opens/closes a link; an unrequested open is held for your approval. |
-| `start_review(target)` / `end_review()` | reviewer | Waits for the PR/MR's pipelines, then opens a review snapshot; `end_review` removes it (§6.3). Any profile allowing them can review. |
+| `hand_over(to, task)` | coder | Gives work to a **linked** agent that edits files and is **idle** (Idle or Done, nothing queued); refused otherwise. It arrives as a task from the sender; the other agent messages its result back (§6.1). Counts as an agent-to-agent message for the loop guard. |
 | `request_permission(...)` | — (Claude Code itself) | Permission prompts (§7.5). |
 
 **Loop guard:** each agent-to-agent message carries a hop count; a chain stops after **Hop limit** hops (default 10)
@@ -123,23 +116,22 @@ without a message from you, and both agents and you are told why. A message from
 ### 5.1 Keys
 - Any number of GitHub and GitLab keys. Each: **label**, **kind**, **host** (default `github.com` / `gitlab.com`),
   **token**, and optional **git identity** (commit author name and email, e.g. a bot account's). A key may be your
-  own account's or a separate one (e.g. a bot for coders or reviewers).
+  own account's or a separate one (e.g. a bot account for coders).
 - **Storage:** saving stores the token in the OS vault via java-keyring (Windows Credential Manager, macOS Keychain,
   Linux Secret Service) as `juno/key/<id>`; `settings.json` holds only `"token": "keyring:juno/key/<id>"`. Deleting
   a key deletes its vault entry. If no vault is available (e.g. Linux without a keyring daemon, WSL, SSH), the tab
   says so and offers `env:VARIABLE` (Juno stores the variable's name). **Never plain text.**
 - Tokens are never shown in full after saving, logged, or put in prompts; they're read only when an agent starts.
 - **Test** checks the key against the host's MCP server and REST API, and reports which of the permissions below are
-  missing (read the repository, read pull requests / checks, comment).
+  missing (read the repository, read pull requests and issues, push, comment).
 - **Required token permissions** (shown in the Keys tab next to the token, per kind):
 
 | Host | Token type | Permissions |
 | --- | --- | --- |
-| GitHub | **Fine-grained PAT** (resource owner = the repository's owner; select the repositories) or a classic PAT with `repo` | Repository permissions (verified: Contents and Pull requests read & write are enough to open PRs, review, reply and resolve): **Metadata** read; **Contents** read & write (read is enough for reviewers); **Pull requests** read & write; **Actions** read; **Commit statuses** read (fine-grained tokens have no "Checks" permission; whether check runs on a private repository are readable with these is checked by the Test button); optional **Administration** read (lets Juno read branch protection to find required checks; rulesets are readable without it). An organisation may need to approve the token. |
-| GitLab | **Two tokens** (see below) | **MCP:** a *fine-grained* personal access token with the **MCP tool** resource and **Execute** permission. Legacy PATs, project and group tokens are rejected by the MCP server. **Git and REST:** a normal personal access token (or project/group token) with `api`, `read_repository` and `write_repository` (reviewers: `api`, `read_repository`). |
+| GitHub | **Fine-grained PAT** (resource owner = the repository's owner; select the repositories) or a classic PAT with `repo` | Repository permissions: **Metadata** read; **Contents** read & write; **Pull requests** read & write (enough to open PRs and reply to threads); **Issues** read (so agents can read issues you paste). An organisation may need to approve the token. |
+| GitLab | **Two tokens** (see below) | **MCP:** a *fine-grained* personal access token with the **MCP tool** resource and **Execute** permission. Legacy PATs, project and group tokens are rejected by the MCP server. **Git and REST:** a normal personal access token (or project/group token) with `api`, `read_repository` and `write_repository`. |
 
-- A **GitLab key holds two tokens**: the MCP token above, and the git/REST token (git over HTTPS, pipeline polling,
-  required-check and approval-state lookups). Both are stored like any token (vault or `env:VARIABLE`). A GitHub key
+- A **GitLab key holds two tokens**: the MCP token above, and the git/REST token (git over HTTPS and the Test button). Both are stored like any token (vault or `env:VARIABLE`). A GitHub key
   has one token for everything.
 - The MCP URL comes from the host; **MCP URL override** under Advanced:
 
@@ -155,18 +147,17 @@ without a message from you, and both agents and you are told why. A message from
 Keys are set **only on agents** — not on profiles or projects: each agent can have one GitHub key and one GitLab key,
 chosen when you create it (§7.10) and changeable in its options menu. The key for the host of the repository being
 worked on is used for **everything** the agent does on GitHub/GitLab:
-- **MCP tools** — its temporary `mcp.json` points at **Juno's host MCP proxy** (§6.6), which forwards to the host's
+- **MCP tools** — its temporary `mcp.json` points at **Juno's host MCP proxy** (§6.3), which forwards to the host's
   MCP server with that key's token (the agent never holds the token);
 - **git over the network** (fetch/pull/push) — for that process only, via a per-process credential helper (never
   written into git config or remote URLs); SSH remotes are used over HTTPS so the token applies;
-- **commits** — the key's git identity, if set, is the author (set in its own worktree only).
+- **commits** — the key's git identity, if set, is the author and committer (through the process's environment; nothing is written into your repository's git config).
 
 **No key, no GitHub/GitLab** — enforced in the agent's process, not just its prompt: no host MCP servers in its
 `mcp.json`; `GIT_ALLOW_PROTOCOL=file` (local repositories only); your credential helpers and SSH agent aren't passed
 in; git can't prompt; `gh` and `glab` are disallowed. Local git (commit, branch, diff, log) still works. Anything
-needing the host (fetch, push, opening a PR, starting a review) stops at **Awaiting decision 🔑** with the reason
-("No GitHub key is set for bob, so I can't push to acme/api — set one in bob's options menu"). Juno's own git
-operations for an agent follow the same rule.
+needing the host (fetch, push, opening a PR, reading an issue) stops at **Awaiting decision 🔑** with the reason
+("No GitHub key is set for bob, so I can't push to acme/api — set one in bob's options menu").
 
 #### 5.1.2 First run
 A skippable setup: Claude Code path (checked), install the Claude hook, notes folder, a first project, and **adding
@@ -181,14 +172,12 @@ without a key for its project's host shows a warning in its setup form (§7.10).
   before every change.
 - **Claude Code path** (default `claude` on PATH), used by profiles without their own.
 - **Juno asks before assigning** (§4.2), **Tell Juno about direct tasks**, **Fresh-start threshold** (default 60 %).
-- **Report length** (default 800 characters), **Hop limit** (default 10), **Pipeline wait limit** (default 60 min).
+- **Report length** (default 800 characters), **Hop limit** (default 10).
 - **Max agents working at once**; **idle process timeout** (an idle agent's process is closed; its next message
   resumes it).
 - **Notes folder** (§9).
-- **Storage:** space per agent and total (worktree, review snapshots, journals and logs, earlier conversations), with
-  **Remove worktree** for idle ones (no uncommitted/unpushed work; recreated on next start; flagged after 14 days
-  untouched) and **Clean up old data** (applies §7.9 limits now). Never deletes branches, project folders, or
-  worktrees with uncommitted or unpushed work.
+- **Storage:** space per agent and total (journals and logs of the current and of earlier conversations) and **Clean up
+  old data** (applies §7.9 limits now). Never touches branches, project folders or worktrees.
 
 ### 5.3 Projects
 - **Name**, **local repository folder** (must exist), optional **remote** (GitHub `owner/repo` or GitLab
@@ -211,7 +200,7 @@ without a key for its project's host shows a warning in its setup form (§7.10).
 | **Max turns** | Per message, default 150. | editable |
 | **Spend limit** | USD per process; blank = none. | editable |
 | **Needs a project folder** | Its agents won't start without a project (§7.7). | 🔒 |
-| **Edits files** | Its agents get their own worktree (§7.8). | 🔒 |
+| **Edits files** | Its agents get the project's build & test commands allowed (§5.3), and can receive work through `hand_over` (§4.4). | 🔒 |
 | **Profile commands** | Extra slash commands: name + prompt template. | built-in ones 🔒 |
 | **Skills** | Assigned in the Skills tab. | bundled superpowers assignments 🔒; others editable |
 
@@ -222,8 +211,8 @@ skills and commands — the way to change anything locked. Your own profiles are
 - Library of skill packs (`SKILL.md`, folder, or `.zip` / `.skill`), copied into `~/.juno/skills`. Each pack applies
   to the whole orchestration or chosen profiles; individual skills can be switched off globally or **per profile**.
 - Agents get their skills as a session-only plugin (`--plugin-dir`); nothing is written into project folders.
-- **Bundled: superpowers** (obra/superpowers, MIT). Default assignments: **coder** — all except `using-git-worktrees`
-  (Juno manages worktrees); **planner** — only `using-superpowers`, `brainstorming`, `writing-plans`. Bundled packs
+- **Bundled: superpowers** (obra/superpowers, MIT). Default assignments: **coder** — every skill, including
+  `using-git-worktrees` (Juno makes no worktrees; coders make their own when they need one, §7.8); **planner** — only `using-superpowers`, `brainstorming`, `writing-plans`. Bundled packs
   can't be removed, their built-in assignments are locked, and their files are refreshed from Juno's copy on start-up.
   They can be assigned to your own profiles with any skill selection.
 - `/activate<skill>` (§8.1): the agent loads and follows that skill from its next message; a pack name activates its
@@ -238,178 +227,100 @@ the built-in prompts (§11) read-only.
 | Profile | Model / effort | Permission | Needs folder | Edits files | Tools (defaults) |
 | --- | --- | --- | --- | --- | --- |
 | **orchestrator** | Opus 5.5 / high | default | no | no | Juno tools (all), Read, Grep, Glob |
-| **coder** | Sonnet 5.5 / high | acceptEdits | **yes** | **yes** | file tools; `Bash(git:*)` except `git push --force`; project build & test commands; host MCP (§6.6): open PR/MR, read comments, reply; superpowers sub-agents. **Disallowed:** `gh`, `glab`; approve, merge, close PR/MR; resolve review threads |
-| **reviewer** | Sonnet 5.5 / high | default | no | no | Read, Grep, Glob, `Bash(git diff/log/show:*)`, `start_review`/`end_review`; host MCP: read PR/MR, pipelines, comments; post review comments; resolve threads. **Disallowed:** Edit, Write, `gh`, `glab`; approve, request changes, merge, close |
-| **planner** | Opus 5.5 / max | default | no | no | Read, Grep, Glob, WebSearch, WebFetch; superpowers `brainstorming`, `writing-plans`. **Disallowed:** Edit, Write |
+| **coder** | Sonnet 5.5 / high | acceptEdits | **yes** | **yes** | file tools; `Bash(git:*)` except `git push --force`; project build & test commands; `hand_over`; host MCP (§6.3): read PRs/MRs, threads and issues, open PR/MR, reply. **Disallowed:** `gh`, `glab`. The proxy refuses approve, merge, close, resolve and every other host action |
+| **planner** | Opus 5.5 / max | default | no | no | Read, Grep, Glob, WebSearch, WebFetch; superpowers `brainstorming`, `writing-plans`; host MCP: read only (issues, PRs/MRs). **Disallowed:** Edit, Write |
 | **searcher** | Sonnet 5.5 / medium | default | no | no | WebSearch, WebFetch, Read |
-| **notes writer** | Sonnet 5.5 / medium | default | no | no | Read, Grep, Glob, `Bash(git diff/log:*)`. **Disallowed:** Edit, Write |
 
-Every profile also gets the "every profile" Juno tools (§4.4). Host MCP tool names are in §6.6; because approve,
-request-changes and resolve-thread are options of the *same* tool that posts a review, the "Disallowed" parts of the
-host entries above are enforced by the proxy per action (§6.6), not by tool name alone.
+Every profile also gets the "every profile" Juno tools (§4.4). Host MCP tool names are in §6.3. Profiles that existed
+earlier (a reviewer, a notes writer) are gone: an agent that had one waits at **Awaiting decision ⚙** until you pick
+another profile for it in its pane or the inbox; its conversation, project and keys are kept, and a profile of your own
+that allowed the removed tools simply loses those rules.
 
-### 6.6 Host MCP access (verified in Milestone 5a)
+### 6.3 Host MCP access
 Agents never talk to GitHub's or GitLab's MCP server directly. Their `mcp.json` points at a **proxy in Juno's MCP
 server**, which holds the key's token, forwards only the calls the agent's profile allows, and refuses the rest with a
-clear message. This is needed because on both hosts the dangerous actions are *arguments* of tools the profile needs.
+clear message. Only three kinds of action exist: **read** (PRs/MRs, diffs, files, commits, review threads, issues),
+**open** a PR/MR and **reply** to a thread; every other tool of the host's server (approve, merge, close, review,
+resolve, edit, create branches…) is unknown to Juno and refused, whatever a profile says. A profile allows them with
+`host:read`, `host:open` and `host:reply` rules.
 
 | Capability | GitHub tool (`api.githubcopilot.com/mcp/`) | GitLab tool (`<host>/api/v4/mcp`, 18.3+; GA in 19.5) |
 | --- | --- | --- |
 | Open PR/MR | `create_pull_request` | `save_merge_request` (no `merge_request_iid`) |
-| Read PR/MR, diff, files, commits, threads | `pull_request_read` (`get`, `get_diff`, `get_files`, `get_commits`, `get_reviews`, `get_comments`, `get_review_comments`) | `get_merge_request` (`include`: diffs, commits, notes, pipelines, discussions, approvals) |
-| Inline comments + summary, anchored to a commit | `pull_request_review_write` `create` (with `commitID`) → `add_comment_to_pending_review` → `pull_request_review_write` `submit_pending` (`event: COMMENT`, body = summary) | `save_merge_request_review` `create_diff_note` (with `sha`) → `submit_review` |
+| Read PR/MR, diff, files, commits, threads, mergeability | `pull_request_read` (`get`, `get_diff`, `get_files`, `get_commits`, `get_reviews`, `get_comments`, `get_review_comments`); `get` carries `mergeable` / `mergeable_state` | `get_merge_request` (`include`: diffs, commits, notes, discussions); `has_conflicts`, `detailed_merge_status` |
+| Read an issue and its comments | `issue_read` (`get`, `get_comments`), `list_issues`, `search_issues` | `get_issue` and its notes (names from the documentation) |
 | Reply to a thread | `add_reply_to_pull_request_comment` | `save_note` with `discussion_id`, or `save_merge_request_review` `reply_discussion` |
-| Resolve a thread | `pull_request_review_write` `resolve_thread` | `save_merge_request_review` `resolve_discussion` |
-| Checks / pipelines on the head commit | `pull_request_read` `get_check_runs`, `get_status`; `actions` toolset for workflow runs | `get_merge_request` `include: pipelines`, `get_pipeline` |
-| Required checks, "needs approval" | **GraphQL** `isRequired(pullRequestNumber:N)` (verified), or REST rulesets / branch protection; workflow runs with `status: action_required` | **REST** (`only_allow_merge_if_pipeline_succeeds`, `detailed_merge_status`, manual jobs) |
-| Approve / request changes | `pull_request_review_write` `event: APPROVE` / `REQUEST_CHANGES` | `save_merge_request_review` `approve` |
-| Merge / close | `merge_pull_request` / `update_pull_request` `state: closed` | `accept_merge_request` / `save_merge_request` `state_event: close` |
 
 **What each profile may do through the proxy:**
-- **coder:** open a PR/MR; read PR/MR data, checks and threads; reply to threads. Nothing else (no review writes, no
-  resolve, no approve, no merge, no close, no edits to PR/MR state).
-- **reviewer:** read; create reviews with `COMMENT` only; add inline comments; reply; resolve threads (the proxy
-  checks the thread is one the reviewer's own marker started, §6.3). Never approve, request changes, merge or close.
-- Other profiles: no host MCP access. A user-made profile gets the same per-action choices in its allowed tools.
-- Pipeline polling, required checks and approval states use REST with the key's (git/REST) token, from Juno itself.
+- **coder:** read, open a PR/MR, reply to threads. Replies carry the marker "🤖 name (profile):", added by the proxy
+  when missing, so people can tell an agent's words. Opening a PR/MR adds an entry to the PRs tab (§7.11).
+- **planner:** read only (issues and PRs/MRs), for the issues you paste into its chat.
+- Other profiles: no host MCP access. A user-made profile gets the same three choices in its allowed tools.
+- Juno itself only calls REST for the key's Test button, with the key's (git/REST) token.
 
 The GitHub server needs the `Mcp-Protocol-Version` header and exposes extra toolsets at `/mcp/x/<toolset>`; the proxy
-asks for the default toolset plus `actions`. Tool names above were read from the live GitHub server; GitLab's come from
-its documentation and are re-checked at the first GitLab run (§13).
+asks for the default toolset plus `actions` (read-only listings). GitHub's tool names were read from the live server;
+GitLab's come from its documentation and are re-checked at the first GitLab run (§13).
 
 ### 6.1 What each system prompt covers
-- **orchestrator (Juno):** track who's idle; propose or assign tasks (§4.2) as self-contained tasks; link/unlink when
-  asked, and ask before linking on her own; never do the work herself; keep reports to the user short.
+- **orchestrator (Juno):** does five things: opens links, closes links, passes on reports from single agents, gives
+  status updates on the whole board, and assigns tasks (§4.2), as self-contained tasks; asks before linking on her own;
+  never does the work herself; keeps reports to you short. She has no say over git, branches or worktrees.
 - **coder:**
-  - Before starting, agree the branch with you (existing, or a new one and its name); ask again if the task changes.
-    Works in its own worktree and switches it to that branch.
+  - **Git first.** It checks the folder is a git repository; if not, it says so and stops — it never runs `git init`
+    and never offers to. Before touching a file it asks you (one ❓ question): **a new branch** (which existing branch
+    to start from, e.g. `main`, and the new branch's name, e.g. `feature_123`) **or an existing branch to work on
+    directly** (e.g. `main`). A task that names them counts as answered; it asks again if the task changes. Committing
+    on the repository's default branch needs your explicit yes to that exact branch. It never force-pushes.
+  - **Next to other agents** (§7.8): the contacts list shows each linked agent's status, project and branch. In a
+    shared folder it doesn't switch branches under an agent that is working there: it makes its own git worktree with
+    superpowers' `using-git-worktrees` skill (inside the project, git-ignored). On the same branch it tells linked
+    agents which files it will change before it starts, asks before touching something one of them claimed, commits in
+    small steps, pulls before pushing and says when it has pushed.
+  - **Handing over:** when part of its task belongs elsewhere or its context is nearly full, and a linked coder is
+    idle, it gives that part over with `hand_over` and tells you; the other agent messages its result back.
   - May split large tasks across superpowers sub-agents (shown nested in its pane, §7.3).
   - When done, in order: (1) superpowers' per-task and final whole-branch reviews; (2) run the project's build and
     tests locally and fix failures — if the project has no build & test commands, ask you how to test; (3) push and
     **open an ordinary PR/MR via the host MCP tools** (no remote → stop at the commit). At superpowers' finishing step
-    always "push and open a PR" this way: never merge locally, never discard, never `gh`/`glab` (committing, merging
-    or pushing onto the base branch is also blocked by git hooks, §7.8).
-  - Never approve, merge or close a PR/MR; merging is yours.
-  - If linked to an agent whose **profile is `reviewer`** (checked with `list_agents` when done), send it one message
-    — "PR #42 opened for branch `feature/login`" — and carry on; nothing comes back. To notify your own reviewer
-    profiles, duplicate the coder and add their names to this rule.
-  - Acts on review comments only via `/checkforcomments` (§6.2).
-- **reviewer:** reviews **PRs/MRs only** (§6.3), any author. Its only output is review comments. Waits for pipelines
-  to pass; doesn't build or run tests; reads the snapshot as a diff against the PR/MR's base plus surrounding code;
-  never edits. Findings by severity (**blocker / should fix / consider / nitpick**), each with file, line, what's
-  wrong, why it matters, suggested fix; plus a verdict. **Always shows you the comments and posts only what you
-  approve** (you can drop or edit any). Sends nothing back to the coder. Language-specific skills usually go here.
-  Checklist:
-  1. **Does what was asked** — matches the task/ticket; nothing missing; no unrelated changes or scope creep.
-  2. **Correctness and logic** — inconsistencies, edge cases, off-by-one, wrong assumptions.
-  3. **Null and empty handling** — nulls/optionals, empty collections and strings, missing keys, unchecked casts.
-  4. **Error handling** — caught at the right level, not swallowed, useful messages, resources released, safe retries.
-  5. **Security** — injection (SQL, command, path), input validation, authn/authz, secrets in code or logs, unsafe
-     deserialisation, vulnerable dependencies.
-  6. **Auditing** — security- and business-relevant actions recorded (who, what, when) where the project expects it.
-  7. **Logging** — right level, enough context, no secrets or personal data, not noisy.
-  8. **Monitoring and observability** — metrics, traces, health checks where used; failures that would go unnoticed.
-  9. **Tests** — new and changed behaviour tested incl. edge cases and failure paths; meaningful assertions; not flaky.
-  10. **Duplication and redundancy** — repeated logic, reimplementing what exists, dead code.
-  11. **Language and project standards** — idiomatic code, project conventions, naming, formatting, structure,
-      accurate comments.
-  12. **Concurrency** — thread safety, races, shared mutable state, deadlocks.
-  13. **Performance and resources** — needless work in loops, N+1 queries, unbounded growth, leaked
-      files/connections/threads.
-  14. **Compatibility** — breaking changes to APIs, config, data formats or schemas; migrations included and
-      reversible.
-  15. **Dependencies** — justified, maintained, licence-compatible, pinned.
-  16. **Accessibility** (UI changes) — fully keyboard operable (sensible Tab order, visible focus, no traps, Esc closes
-      dialogs); accessible names/labels; text alternatives for images and icons; colour never the only signal;
-      sufficient contrast; works when zoomed or text enlarged; motion and auto-play can be paused; form errors say
-      what and where.
+    always "push and open a PR" this way: never merge locally, never discard, never `gh`/`glab`.
+  - Never approves, merges or closes a PR/MR; merging is yours.
+  - **Issues:** when you paste an issue link or number (GitHub or GitLab), it reads the issue and its comments through
+    the host MCP tools first and works from them.
+  - Acts on review comments only via `/checkforcomments` and on merge conflicts only via `/checkformergeconflicts`
+    (§6.2).
 - **planner:** talks a feature through with you and writes the plan **in its pane only** — including architecture
   and the choice of frameworks, libraries and tools, with reasons and alternatives. It **never writes files**; you
   copy what you need from the pane. When superpowers is activated it uses **only `brainstorming`** (explore one
   question at a time) **and `writing-plans`** (turn the agreed design into a step-by-step plan), never starts
-  implementing, and ignores those skills' instructions to save files — the plan goes in the pane.
+  implementing, and ignores those skills' instructions to save files — the plan goes in the pane. When you paste an
+  issue link or number it reads the issue (read-only) and plans from it.
 - **searcher:** searches the web, reads sources, answers with findings and a link for each source.
-- **notes writer:** writes human-readable **implementation notes** (what changed, why, how it fits) and **test notes**
-  (manual test steps, edge cases) **in its pane only**, from a branch, diff or description; never writes files. To
-  read a branch it needs the project (asks via `request_folder`).
+### 6.2 Coder commands
+Both are built-in profile commands that work on GitHub and GitLab. **Nothing changes until you've decided.**
 
-### 6.2 Coder: `/checkforcomments`
-A built-in profile command. **Nothing changes until you've decided on every comment:**
-1. Fetch unresolved review comments on the PR/MR of its branch — people's and agents' (recognised by the marker,
-   §6.3).
+**`/checkforcomments`**
+1. Fetch unresolved review comments on the PR/MR of its branch — people's and agents' (recognised by the marker).
 2. Show the full numbered list, grouped by file.
 3. One at a time: the comment, the code, whether it agrees and why, its proposal (change, or reply explaining why
    not). **Wait for your decision:** fix as proposed / fix differently (you say how) / reply only / skip.
-4. When all are decided: make the changes, run the tests, commit, push.
+4. When all are decided: make the changes locally, run the tests, commit, push.
 5. Show the replies; post only after you approve. Skipped comments get no reply.
 
-The coder never resolves threads (its "resolve thread" tool is disallowed). A reviewer resolves its own threads on
-re-review; people's threads are left for you or them.
+The coder never resolves threads (the proxy refuses it); people's threads are left for you or them.
 
-### 6.3 Reviews (PRs/MRs only)
-- **Target:** a PR/MR number or link, or an agent ("review bob's work" = its open PR/MR). `start_review` resolves the
-  repository, head commit and base commit through the host. The reviewer needs a key for the host (§5.1.1). Projects
-  without a remote can't be reviewed by reviewer agents.
-- **Repository not cloned:** if the PR/MR's repository isn't one of your projects, the reviewer stops at **Awaiting
-  decision 📁** with the exact `git clone …` command for **you** to run, then add it as a project; it continues
-  from there. It never clones itself.
-- **Pipelines first.** `start_review` waits for the PR/MR's pipelines (GitHub checks / GitLab pipelines) on the head
-  commit. Juno polls the host (every 60 s for 10 minutes, then every 2 minutes, up to the **pipeline wait limit**);
-  the reviewer is **Waiting ⏳** meanwhile and is messaged when it ends.
-  - **Passed** = every **required** check passed (where the host marks checks required — GitHub branch protection or
-    rulesets, GitLab "pipelines must succeed"); otherwise every check. Skipped/neutral count as passed. Failing
-    optional checks are listed in the summary but don't block. → review starts.
-  - **Needs a person** (GitHub "approve and run", GitLab manual job, pending deployment approval) → at once,
-    **Awaiting decision ⚠** ("approve them on GitHub, then press Continue"): **Continue waiting / Cancel**.
-  - **Failed** → no review; **Awaiting decision ⚠** with the failed jobs: **Wait for a new commit / Cancel**.
-  - **New commits pushed while waiting** → waits again on the new head.
-  - **No pipelines configured** → reviews straight away; the summary says nothing checked the build or tests.
-    (GitHub reports a commit with no checks as status `pending` with zero statuses and zero check runs, so "none" is
-    decided by the counts and the repository's workflow runs, never by the word `pending`; `get_status` covers only
-    legacy statuses and stays `pending` even when Actions checks have passed. A commit can have several runs of the
-    same workflow, one per triggering event, so "passed" means every run on the head sha, not one by name.)
-  - **Wait limit reached** → **Awaiting decision ⚠**: **Keep waiting / Cancel**.
-- **Snapshot:** a temporary **detached worktree** at the head commit (`~/.juno/review/<reviewer>-<pr>-<commit>`); the
-  reviewer's process runs in it (restart, conversation kept) and is told the PR/MR, head and base commits and
-  pipeline results. Detached, so no branch is checked out there and the coder works and pushes undisturbed. The
-  reviewer reads; it can't change the submitted work.
-- **Posting:** inline comments on the lines concerned, plus one **summary comment** with the verdict and the reviewed
-  commit ("Reviewed at `a1b2c3d`"), all anchored to that commit. Shown to you first; only what you approve is posted.
-  If new commits arrived meanwhile, it waits for their pipelines, refreshes the snapshot and re-checks findings first.
-  Never approves, requests changes, merges or closes.
-- **Marker:** every comment or reply an agent posts starts with "🤖 <agent> (<profile>):", so people see it came from
-  an agent and `/checkforcomments` can tell agents' comments from people's.
-- **Account:** posts with the reviewer's key (§5.1.1): your own key → appears as you; a bot key → appears as the bot.
-- **Re-review** (when you ask again): finds its latest summary comment and the commit recorded there (works after
-  `/new` or with another reviewer), waits for pipelines on the new head, reviews only changes since that commit,
-  replies on its own earlier threads and **resolves those it confirms fixed** (shown to you first). Never resolves
-  threads it didn't start.
-- **Clean-up:** `end_review` (or finishing) removes the snapshot; leftovers are removed after 24 hours and shown in
-  Storage meanwhile.
+**`/checkformergeconflicts`**
+1. Find the PR/MR of its branch and ask the host whether it has conflicts (GitHub `mergeable` / `mergeable_state`,
+   GitLab `has_conflicts` / `detailed_merge_status`). None → it says so and stops. It refuses to go on over uncommitted
+   changes (it tells you what they are; it never stashes or discards).
+2. Locally: fetch the base branch and start the merge (`git merge --no-commit --no-ff origin/<base>`); list the
+   conflicted files. If git finds none, it aborts the merge and stops.
+3. One conflicted file at a time: the conflicting hunks, what each side was doing, its proposal. **Wait for your
+   decision:** resolve as proposed / resolve differently / take mine / take theirs / abort the merge. No conflicted
+   file is edited before you've answered for it.
+4. When every file is resolved: build and test, commit the merge, push normally (never forced), and report.
 
-### 6.4 Review workflows
-Superpowers always reviews a coder's work and the coder runs build and tests locally before opening the PR/MR, so a
-reviewer agent is optional. Reviews happen only after pipelines pass. Comments are acted on only when **you** run
-`/checkforcomments`. Merging is always yours.
-
-| Workflow | When | What happens |
-| --- | --- | --- |
-| **Superpowers only** (default) | Coder not linked to a `reviewer` | Superpowers reviews → local build & tests → PR/MR. |
-| **Linked reviewer** | Coder linked to a `reviewer` | As above, then the coder messages the reviewer the PR/MR number once; the reviewer waits for pipelines, reviews, shows you its comments, posts what you approve. Nothing goes back to the coder. |
-| **Any PR/MR** | You ask a reviewer ("review PR #42" / a link) | Same review, on anyone's PR/MR (asking you to clone the repository first if needed). |
-| **Assigned by Juno** | Juno assigns "review bob's PR" | Same review; Juno gets one line once it's finished ("posted 5 comments on #42"). The findings live on the PR/MR. |
-
-### 6.5 Getting a PR/MR's commit locally
-All worktrees of a repository (your checkout, agents' worktrees, snapshots) share one object store and refs.
-- **Your coders' PRs/MRs:** if the PR/MR's head commit (from the host) exists locally, use it — no network. Otherwise
-  (unpushed local commits, or someone else pushed) fetch the PR/MR's head. Always review the **pushed** head.
-- **Other PRs/MRs, incl. forks:** fetch `pull/<n>/head` (GitHub) or `merge-requests/<n>/head` (GitLab) from the
-  project's remote; also fetch the base commit if missing, so the diff uses the real base.
-- Fetched refs go under `refs/juno/review/<reviewer>/<pr>` (never your branches) and are deleted with the snapshot.
-- Fetching uses the reviewer's key (§5.1.1); without one it stops at 🔑; if the key can't read the repository, Juno
-  says so.
-- If another agent's git command holds a lock, retry for a few seconds before reporting.
-- Snapshots include submodules and Git LFS files when the repository uses them.
+Both happen in the agent's own folder; nothing is resolved on the host.
 
 ## 7. Board
 
@@ -425,14 +336,14 @@ All worktrees of a repository (your checkout, agents' worktrees, snapshots) shar
 - **Maximise:** double-click the top bar (or ⤢) to fill the board; again or Esc restores the layout exactly.
 
 ### 7.2 Top bar and toolbar
-- **Pane top bar:** status (+ reason tag or ⏳), unread dot, name, profile, project and branch (or "no folder"), model
+- **Pane top bar:** status (+ reason tag), unread dot, name, profile, project and branch (or "no folder"), model
   and effort; resume, stop, maximise, split, **⋯ options menu** (§7.10). The agent's colour outlines the pane.
-- **Toolbar:** title, **+ New agent**, board / notes toggle, **inbox**, **usage-limit meter**, Settings.
+- **Toolbar:** title, **+ New agent**, board / notes / PRs toggle, **inbox**, **usage-limit meter**, Settings.
 - **Inbox:** count and list of everything waiting on you — assignment proposals, tasks you can still undo, link suggestions,
-  fresh-start approvals, permission requests 🔐, folder requests and repositories to clone 📁, missing keys 🔑, review comments to
-  approve, `/checkforcomments` decisions, questions ❓, failed or stuck pipelines ⚠, failures and interruptions ⏸.
+  fresh-start approvals, permission requests 🔐, folder requests and repositories to clone 📁, missing keys 🔑, removed profiles ⚙,
+  questions ❓ (including `/checkforcomments` and `/checkformergeconflicts` decisions), failures and interruptions ⏸.
   Each item: agent, reason, one-line summary, its answer buttons where it has them, else "go to pane". Items disappear
-  when answered anywhere. A quiet **Waiting** section lists agents Waiting ⏳ (agent, PR/MR, minutes).
+  when answered anywhere.
 - **Usage-limit meter:** your Claude plan's limits used, from Claude Code's rate-limit events (`5h 60% · week 68%`,
   reset times on hover; amber > 80 %, red > 95 %). Dollar figures anywhere are labelled **"API-price estimate"**.
 
@@ -490,22 +401,22 @@ showing one puts it back where it was. Juno can't be hidden.
 - Any agent can ask for one mid-task with `request_folder` (same picker). Changing an agent's project restarts its
   process, keeping the conversation.
 
-### 7.8 Worktrees
-- Agents whose profile **edits files** each get their **own worktree** of the project in `~/.juno/worktrees/<agent>`,
-  created on first start, on the branch agreed with you (coder) or by default a new `juno/<agent>` branch off the
-  project's current branch.
-- Agents that don't edit files read the project's main folder (your checkout) without changing it. Reviewers use
-  snapshots (§6.3), never a coder's worktree or your checkout.
-- A branch can be checked out in only one place: if an agent needs one checked out elsewhere (another worktree or your
-  checkout), Juno says where and the agent asks you rather than forcing it.
-- **Protected branches:** in every coder's worktree (any agent whose profile edits files), Juno installs git hooks
-  that refuse to **commit, merge or push onto the project's base branches** — the remote's default branch (e.g.
-  `main`) and the base branch of any open PR/MR from that worktree. The agent gets a clear refusal ("Juno: committing
-  to `main` isn't allowed; work on your own branch and open a PR"). Merging the base branch **into** its own branch
-  (to bring it up to date) stays allowed. The hooks apply to that worktree only (via per-worktree `core.hooksPath`)
-  and run your repository's own hooks too, so they never affect your checkout or other worktrees.
-- Deleting an agent removes its worktree (warning if uncommitted or unpushed work); its branch is kept.
-- `/diff`, the top bar and the context summary show the agent's own worktree and branch.
+### 7.8 Git, branches and sharing a folder
+- **Juno makes no worktrees and installs no git hooks.** Every agent works in its project's folder (or, without a
+  project, in a private empty folder). Juno never switches a branch, never commits, never touches your repository's git
+  config; the agent's top bar and `/getcontext` show the branch currently checked out in its folder.
+- **Branch choice is the coder's first question** (§6.1): start from a source branch onto a new branch, or work
+  directly on an existing one. Without git in the folder the coder says so and stops; Juno never offers `git init`.
+- **Committing to the default branch has no hard guard any more:** it is the coder's prompt (explicit yes needed), your
+  permission rules and the PR flow. The host proxy still refuses merge, approve and close.
+- **Several agents in one project** share one working tree, so Juno tells them (§6.1): the contacts list and
+  `list_agents` show each linked agent's status, project and branch; a coder that needs a different branch from an
+  agent working in the folder makes its own git worktree with superpowers' `using-git-worktrees` skill (inside the
+  project, git-ignored), and on the same branch coders tell each other which files they will change. They can message
+  only linked agents; an unlinked one in the same folder is a reason to ask you for a link.
+- The agent's work in such a worktree is under the project's folder, so its permissions and Juno's file tracking
+  still apply; `/diff` shows the project folder's uncommitted changes (not a nested worktree's), while "files
+  changed" in reports comes from the agent's own edits.
 
 ### 7.9 Conversations and data limits
 - Starting fresh or `/new` keeps the previous conversation in the agent's **Conversations** list (started/ended, first
@@ -515,8 +426,8 @@ showing one puts it back where it was. Juno can't be hidden.
   deletes its own journal and log for them. If Claude Code has already deleted a transcript, its entry is greyed out
   ("no longer available").
 - The current conversation's journal and log are always kept; logs rotate above 5 MB (one old copy).
-- **Deleting an agent** removes everything Juno created for it (worktree with warning, journals, logs, conversation
-  list, per-agent rules); Juno **asks** before also deleting its Claude Code transcripts (`~/.claude/projects/`).
+- **Deleting an agent** removes everything Juno created for it (journals, logs, conversation
+  list, per-agent rules); your project folder and branches are never touched; Juno **asks** before also deleting its Claude Code transcripts (`~/.claude/projects/`).
 - Limits apply on start-up and after each conversation ends.
 
 ### 7.10 Adding an agent, and its options menu
@@ -536,11 +447,18 @@ message** (never interrupting the current step; shown as "applies from the next 
 - Conversations (§7.9), Usage (as `/usage`);
 - **Delete agent** (confirmation; not Juno).
 
+### 7.11 PRs tab
+The third toolbar toggle, **PRs**, lists the PRs/MRs your agents opened through Juno (§6.3), newest first: repository
+and number, title, agent (in its colour), the branch it comes from and when. **Open** opens the PR/MR on the host in your
+browser, **Copy link** copies it, and **Close** removes the entry. Entries stay until you close them; closing never
+touches the PR/MR on GitHub or GitLab. They are kept in `~/.juno/prs.json` and survive restarts. If the host's answer
+had no link, the entry is still listed without one.
+
 ## 8. Commands
 
 **Autocomplete:** typing `/` in a pane's input opens a list of the commands available there (any-pane, Juno-only in
 Juno's pane, and the agent's profile commands), filtered as you type, each with a one-line description. After a
-command that takes a name (`/hey`, `/cantalkto`, `/stoptalkingto`, `/getcontextfrom`, `/assign`) it suggests agent
+command that takes a name (`/hey`, `/cantalkto`, `/stoptalkingto`, `/assign`) it suggests agent
 names (with colour and status); after `/activate`, the agent's skills; after `/model` / `/effort`, the options. Tab or
 Enter accepts, Esc closes. Both forms work: `/heybob …` and `/hey bob …`.
 
@@ -570,17 +488,15 @@ supported in Juno — see /help").
 ### 8.2 Juno's pane only
 | Command | What |
 | --- | --- |
-| `/getcontextfrom<name>` | That agent's context summary. |
 | `/assign<name> <task>` | Give a task through Juno without spending her tokens; she tracks the result. |
 | `/status` | Every agent: status, project, current task, context %. |
-| `/broadcast <text>` | Message every agent. |
 
 **Context summary** is built by the app from the journal — instant, no tokens, nothing added to any conversation:
 status, context use, current or last task, files read and changed, links, last summary, conversation age. Shown to you
-only; enters Juno's conversation only via `get_agent_context`. To learn what an agent understands, ask it with `/hey`.
+only. To learn what an agent understands, ask it with `/hey`.
 
 ### 8.3 Profile commands
-Defined on profiles (§5.4), e.g. the coder's `/checkforcomments` (§6.2); expanded from their template and sent as a
+Defined on profiles (§5.4), e.g. the coder's `/checkforcomments` and `/checkformergeconflicts` (§6.2); expanded from their template and sent as a
 message.
 
 ## 9. Notepad
@@ -615,11 +531,11 @@ dev.juno
 ├── provider   Provider interface + AgentEvent types (Message, Thinking, ToolUse, Diff, Usage, Result…)
 │   └── claude ClaudeCodeProvider: command line, stream-json parser, hook installer, MCP config
 ├── runtime    AgentRuntime (agents, statuses, queueing), AgentProcess (one CLI process), Journal
-├── comms      JunoMcpServer, links, delegation/approvals, reports, loop guard, pipeline polling
-├── git        agent worktrees, review snapshots, credential helper, /diff
+├── comms      JunoMcpServer, links, delegation/approvals, reports, loop guard, host MCP proxy rules
+├── git        git environment and credential helper, /diff
 ├── prompts    built-in prompt templates (§11)
 ├── skills     skill library, bundled packs, per-agent plugin folders
-└── ui         board, panes and output blocks, setup form/options menu, settings tabs, notepad, filter list
+└── ui         board, panes and output blocks, setup form/options menu, settings tabs, notepad, PRs tab, filter list
 ```
 
 ## 11. Built-in prompts
@@ -631,7 +547,7 @@ Besides profiles' system prompts, all natural-language text Juno sends lives as 
 2. **Juno MCP tool and parameter descriptions** (§4.4).
 3. **Tool results**, esp. refusals ("You are not linked to bob. Ask Juno to link you, or ask the user.").
 4. **Wrappers** for what Juno injects: agent messages, tasks, `/hey` info, reports and digests, approval outcomes, link
-   announcements, loop-guard notice, pipeline-wait outcomes.
+   announcements, loop-guard notice, hand-overs.
 5. **Resume recap** after an interruption.
 6. **Profile command templates** (part of profiles).
 
@@ -648,11 +564,10 @@ Besides profiles' system prompts, all natural-language text Juno sends lives as 
 ## 13. Open items
 **To write (Milestone 0):** the built-in profiles' system prompts (§6.1) and the prompt templates (§11).
 
-**Answered by Milestone 5a** (see §6.6 and `docs/progress.md`): the tools exist on both hosts; approve / resolve are
-options of the review tool, so Juno filters per action in a proxy; required checks and "needs approval" come from REST;
+**Answered by Milestone 5a** (see §6.3 and `docs/progress.md`): the tools exist on both hosts; some dangerous actions are
+options of tools a profile needs, so Juno filters per action in a proxy (now only read / open / reply are allowed);
 GitLab's MCP server takes a fine-grained PAT only, so a GitLab key holds two tokens (§5.1).
 
-**Verified live on GitHub** (Milestone 5a): opening a PR, a pending review with an inline comment anchored to a commit and
-a submitted summary, reply, resolve, close, and check/status reads. **Still to verify:** everything on GitLab (names
-are from its documentation); a *required* check and "needs approval" (`action_required`) with real data; check runs on a
-private repository; the `<name>.ghe.com` MCP URL.
+**Verified live on GitHub** (Milestone 5a): opening a PR, reply, close, and reads. **Still to verify:** everything on
+GitLab (names are from its documentation), including `/checkforcomments`, `/checkformergeconflicts` and reading issues;
+GitHub's `issue_read` and `mergeable_state` with real data; the `<name>.ghe.com` MCP URL.

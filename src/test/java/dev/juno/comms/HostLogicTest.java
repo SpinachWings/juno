@@ -8,11 +8,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.sun.net.httpserver.HttpServer;
 import dev.juno.comms.HostActions.Action;
-import dev.juno.comms.HostApi.Check;
-import dev.juno.comms.HostApi.CheckState;
-import dev.juno.comms.HostApi.Checks;
-import dev.juno.comms.Pipelines.Result;
+import dev.juno.model.Agent;
 import dev.juno.model.Key;
+import dev.juno.model.PullRequestEntry;
 import dev.juno.store.Json;
 import java.io.IOException;
 import java.net.InetSocketAddress;
@@ -22,7 +20,7 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
-/** What the proxy lets through (design §6.6), what checks mean (§6.3), and GitHub's REST answers (§6.6). */
+/** What the proxy lets through (design §6.6), the PRs tab's entries (§7.11) and the key Test's REST answers (§5.1). */
 class HostLogicTest {
     private static JsonNode json(String s) throws IOException {
         return Json.MAPPER.readTree(s);
@@ -37,47 +35,54 @@ class HostLogicTest {
     }
 
     @Test
-    void githubCallsAreToldApartByTheirArguments() throws Exception {
+    void githubReadsOpensAndRepliesOnly() throws Exception {
         assertEquals(Action.READ, github("pull_request_read", "{\"method\":\"get_diff\"}"));
+        assertEquals(Action.READ, github("issue_read", "{\"method\":\"get\"}"));
+        assertEquals(Action.READ, github("list_issues", "{}"));
         assertEquals(Action.READ, github("get_file_contents", "{}"));
-        assertEquals(Action.READ, github("actions_list", "{}"));
         assertEquals(Action.OPEN, github("create_pull_request", "{}"));
         assertEquals(Action.REPLY, github("add_reply_to_pull_request_comment", "{}"));
-        assertEquals(Action.REVIEW, github("pull_request_review_write", "{\"method\":\"create\",\"commitID\":\"a\"}"));
-        assertEquals(Action.REVIEW, github("add_comment_to_pending_review", "{}"));
-        assertEquals(Action.REVIEW, github("pull_request_review_write", "{\"method\":\"submit_pending\",\"event\":\"COMMENT\"}"));
-        assertEquals(Action.APPROVE, github("pull_request_review_write", "{\"method\":\"create\",\"event\":\"APPROVE\"}"));
-        assertEquals(Action.APPROVE, github("pull_request_review_write", "{\"method\":\"submit_pending\",\"event\":\"approve\"}"));
-        assertEquals(Action.REQUEST_CHANGES, github("pull_request_review_write", "{\"method\":\"submit_pending\",\"event\":\"REQUEST_CHANGES\"}"));
-        assertEquals(Action.RESOLVE, github("pull_request_review_write", "{\"method\":\"resolve_thread\",\"threadId\":\"x\"}"));
-        assertEquals(Action.MERGE, github("merge_pull_request", "{}"));
-        assertEquals(Action.CLOSE, github("update_pull_request", "{\"state\":\"closed\"}"));
-        assertEquals(Action.EDIT, github("update_pull_request", "{\"title\":\"x\"}"));
     }
 
     @Test
-    void anythingUnknownIsRefused() throws Exception {
+    void everythingElseIsRefusedWhateverTheProfileSays() throws Exception {
+        assertNull(github("merge_pull_request", "{}"));
+        assertNull(github("update_pull_request", "{\"state\":\"closed\"}"));
+        assertNull(github("update_pull_request", "{\"title\":\"x\"}"));
+        assertNull(github("pull_request_review_write", "{\"method\":\"create\",\"event\":\"APPROVE\"}"));
+        assertNull(github("pull_request_review_write", "{\"method\":\"resolve_thread\",\"threadId\":\"x\"}"));
+        assertNull(github("add_comment_to_pending_review", "{}"));
+        assertNull(github("add_issue_comment", "{}"));
         assertNull(github("create_branch", "{}"));
         assertNull(github("push_files", "{}"));
         assertNull(github("some_new_tool", "{}"));
-        assertNull(github("pull_request_review_write", "{\"method\":\"something_new\"}"));
-        assertNull(github("pull_request_review_write", "{\"method\":\"create\",\"event\":\"SOMETHING\"}"));
+        assertNull(gitlab("accept_merge_request", "{}"));
+        assertNull(gitlab("save_merge_request", "{\"merge_request_iid\":3,\"state_event\":\"close\"}"));
+        assertNull(gitlab("save_merge_request", "{\"merge_request_iid\":3,\"title\":\"x\"}"));
+        assertNull(gitlab("save_note", "{}"));
+        assertNull(gitlab("save_merge_request_review", "{\"method\":\"approve\"}"));
+        assertNull(gitlab("save_merge_request_review", "{\"method\":\"resolve_discussion\"}"));
         assertNull(gitlab("create_workflow", "{}"));
-        assertNull(gitlab("save_merge_request_review", "{\"method\":\"something_new\"}"));
     }
 
     @Test
-    void gitlabCallsAreToldApartByTheirArguments() throws Exception {
+    void gitlabReadsOpensAndRepliesOnly() throws Exception {
         assertEquals(Action.READ, gitlab("get_merge_request", "{\"include\":\"diffs\"}"));
+        assertEquals(Action.READ, gitlab("get_issue", "{}"));
         assertEquals(Action.OPEN, gitlab("save_merge_request", "{\"title\":\"x\"}"));
-        assertEquals(Action.CLOSE, gitlab("save_merge_request", "{\"merge_request_iid\":3,\"state_event\":\"close\"}"));
-        assertEquals(Action.EDIT, gitlab("save_merge_request", "{\"merge_request_iid\":3,\"title\":\"x\"}"));
-        assertEquals(Action.MERGE, gitlab("accept_merge_request", "{}"));
+        assertEquals(Action.OPEN, gitlab("create_merge_request", "{}"));
         assertEquals(Action.REPLY, gitlab("save_note", "{\"discussion_id\":\"d\"}"));
-        assertEquals(Action.REVIEW, gitlab("save_merge_request_review", "{\"method\":\"create_diff_note\",\"sha\":\"a\"}"));
-        assertEquals(Action.RESOLVE, gitlab("save_merge_request_review", "{\"method\":\"resolve_discussion\"}"));
-        assertEquals(Action.APPROVE, gitlab("save_merge_request_review", "{\"method\":\"approve\"}"));
-        assertEquals(Action.REQUEST_CHANGES, gitlab("save_merge_request_review", "{\"method\":\"submit_review\",\"verdict\":\"requested_changes\"}"));
+        assertEquals(Action.REPLY, gitlab("save_merge_request_review", "{\"method\":\"reply_discussion\"}"));
+    }
+
+    @Test
+    void onlyToolsThatCanDoAllowedThingsAreListed() {
+        List<String> readOnly = List.of("host:read");
+        assertTrue(HostActions.listable(Key.Kind.GITHUB, "issue_read", readOnly, List.of()));
+        assertFalse(HostActions.listable(Key.Kind.GITHUB, "create_pull_request", readOnly, List.of()));
+        assertFalse(HostActions.listable(Key.Kind.GITHUB, "merge_pull_request", List.of(HostActions.ANY), List.of()));
+        assertTrue(HostActions.listable(Key.Kind.GITLAB, "save_merge_request", List.of("host:open"), List.of()));
+        assertFalse(HostActions.listable(Key.Kind.GITHUB, "pull_request_review_write", List.of(HostActions.ANY), List.of()));
     }
 
     @Test
@@ -85,76 +90,72 @@ class HostLogicTest {
         List<String> allowed = List.of("host:read", "host:reply");
         assertTrue(HostActions.allowed(Action.READ, allowed, List.of()));
         assertFalse(HostActions.allowed(Action.READ, allowed, List.of("host:read")));
-        assertFalse(HostActions.allowed(Action.MERGE, allowed, List.of()));
-        assertTrue(HostActions.allowed(Action.MERGE, List.of(HostActions.ANY), List.of()));
-        assertFalse(HostActions.allowed(Action.MERGE, List.of(HostActions.ANY), List.of("host:merge")));
+        assertFalse(HostActions.allowed(Action.OPEN, allowed, List.of()));
+        assertTrue(HostActions.allowed(Action.OPEN, List.of(HostActions.ANY), List.of()));
+        assertFalse(HostActions.allowed(Action.OPEN, List.of(HostActions.ANY), List.of("host:open")));
         assertFalse(HostActions.anyAllowed(List.of("Read")));
-        assertEquals("host:request-changes", Action.REQUEST_CHANGES.rule());
-    }
-
-    private static Check c(String name, CheckState state) {
-        return new Check(name, "", state, false, false);
-    }
-
-    private static Check required(String name, CheckState state) {
-        return new Check(name, "", state, true, false);
+        assertEquals("host:reply", Action.REPLY.rule());
     }
 
     @Test
-    void noChecksIsNoneUnlessTheRepositoryHasPipelines() {
-        assertEquals(Result.NONE, Pipelines.evaluate(new Checks(List.of(), List.of(), false)).result());
-        assertEquals(Result.NOT_STARTED, Pipelines.evaluate(new Checks(List.of(), List.of(), true)).result());
+    void onlyRepliesCarryTheMarker() {
+        assertEquals("body", HostActions.commentField(Key.Kind.GITHUB, "add_reply_to_pull_request_comment", Action.REPLY));
+        assertEquals("note", HostActions.commentField(Key.Kind.GITLAB, "save_merge_request_review", Action.REPLY));
+        assertEquals("body", HostActions.commentField(Key.Kind.GITLAB, "save_note", Action.REPLY));
+        assertNull(HostActions.commentField(Key.Kind.GITHUB, "create_pull_request", Action.OPEN));
+        assertEquals("base", HostActions.baseField(Key.Kind.GITHUB));
+        assertEquals("target_branch", HostActions.baseField(Key.Kind.GITLAB));
+    }
+
+    // ---------------------------------------------------------------- the PRs tab's entries
+
+    private static Agent bob() {
+        Agent a = new Agent();
+        a.id = "a1";
+        a.name = "bob";
+        return a;
     }
 
     @Test
-    void everyCheckCountsWhenNoneIsRequired() {
-        assertEquals(Result.PASSED, Pipelines.evaluate(new Checks(List.of(c("a", CheckState.PASSED)), List.of(), true)).result());
-        Pipelines.Outcome failed = Pipelines.evaluate(new Checks(List.of(c("a", CheckState.PASSED), c("b", CheckState.FAILED)), List.of(), true));
-        assertEquals(Result.FAILED, failed.result());
-        assertEquals(List.of("b"), failed.names());
-        assertEquals(Result.PENDING, Pipelines.evaluate(new Checks(List.of(c("a", CheckState.PASSED), c("b", CheckState.PENDING)), List.of(), true)).result());
+    void aGithubAnswerMakesAnEntryWithItsLink() throws Exception {
+        JsonNode args = json("{\"owner\":\"acme\",\"repo\":\"api\",\"title\":\"Add login\",\"head\":\"feature/login\",\"base\":\"main\"}");
+        JsonNode result = json("{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"number\\\":42,\\\"html_url\\\":"
+                + "\\\"https://github.com/acme/api/pull/42\\\",\\\"title\\\":\\\"Add login\\\"}\"}]}");
+        PullRequestEntry e = PullRequestEntry.fromOpen(Key.Kind.GITHUB, args, result, "", bob());
+        assertEquals("#42", e.number);
+        assertEquals("https://github.com/acme/api/pull/42", e.url);
+        assertEquals("acme/api", e.repo);
+        assertEquals("feature/login", e.branch);
+        assertEquals("Add login", e.title);
+        assertEquals("bob", e.agentName);
     }
 
     @Test
-    void twoRunsWithOneNameBothCount() {
-        Check push = new Check("CI", "push", CheckState.PASSED, false, true);
-        Check pr = new Check("CI", "pull_request", CheckState.PENDING, false, true);
-        assertEquals(Result.PENDING, Pipelines.evaluate(new Checks(List.of(push, pr), List.of(), true)).result());
+    void aGitlabAnswerMakesAnEntryAndANumericProjectUsesTheProjectsRemote() throws Exception {
+        JsonNode args = json("{\"project_id\":\"123\",\"title\":\"Fix\",\"source_branch\":\"fix/it\",\"target_branch\":\"main\"}");
+        JsonNode result = json("{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"iid\\\":7,\\\"web_url\\\":"
+                + "\\\"https://gitlab.com/g/p/-/merge_requests/7\\\"}\"}]}");
+        PullRequestEntry e = PullRequestEntry.fromOpen(Key.Kind.GITLAB, args, result, "g/p", bob());
+        assertEquals("!7", e.number);
+        assertEquals("https://gitlab.com/g/p/-/merge_requests/7", e.url);
+        assertEquals("g/p", e.repo);
+        assertEquals("fix/it", e.branch);
+        assertEquals("Fix", e.title);
     }
 
     @Test
-    void onlyRequiredChecksBlockAndFailedOptionalOnesAreListed() {
-        Pipelines.Outcome o = Pipelines.evaluate(new Checks(List.of(required("build", CheckState.PASSED),
-                c("lint", CheckState.FAILED), c("slow", CheckState.PENDING)), List.of(), true));
-        assertEquals(Result.PASSED, o.result());
-        assertEquals(List.of("lint"), o.optionalFailed());
-        assertEquals(Result.FAILED, Pipelines.evaluate(new Checks(List.of(required("build", CheckState.FAILED)), List.of(), true)).result());
+    void anAnswerWithoutJsonStillMakesAnEntryFromWhatWasAsked() throws Exception {
+        JsonNode args = json("{\"owner\":\"acme\",\"repo\":\"api\",\"title\":\"T\",\"head\":\"b\"}");
+        PullRequestEntry e = PullRequestEntry.fromOpen(Key.Kind.GITHUB, args, json("{\"content\":[{\"type\":\"text\",\"text\":\"created\"}]}"),
+                "acme/api", bob());
+        assertEquals("", e.url);
+        assertEquals("", e.number);
+        assertEquals("T", e.title);
+        assertEquals("b", e.branch);
     }
 
-    @Test
-    void aRequiredCheckWithNoResultYetKeepsItWaiting() {
-        assertEquals(Result.PENDING, Pipelines.evaluate(new Checks(List.of(required("a", CheckState.PASSED)), List.of("b"), true)).result());
-        assertEquals(Result.PENDING, Pipelines.evaluate(new Checks(List.of(), List.of("b"), true)).result());
-    }
+    // ---------------------------------------------------------------- the key Test (REST)
 
-    @Test
-    void aPersonIsAskedAtOnceWhateverElseIsGoingOn() {
-        Pipelines.Outcome o = Pipelines.evaluate(new Checks(List.of(c("a", CheckState.PENDING), c("b", CheckState.FAILED),
-                c("deploy", CheckState.NEEDS_PERSON)), List.of(), true));
-        assertEquals(Result.NEEDS_PERSON, o.result());
-        assertEquals(List.of("deploy"), o.names());
-    }
-
-    @Test
-    void gitlabJobStates() {
-        assertEquals(CheckState.PASSED, GitLabApi.jobState("skipped", false));
-        assertEquals(CheckState.FAILED, GitLabApi.jobState("canceled", false));
-        assertEquals(CheckState.NEEDS_PERSON, GitLabApi.jobState("manual", false));
-        assertNull(GitLabApi.jobState("manual", true));
-        assertEquals(CheckState.PENDING, GitLabApi.jobState("waiting_for_resource", false));
-    }
-
-    /** A stand-in for api.github.com with fixed answers by path. */
     private static HttpServer server(Map<String, String> answers, Map<String, Integer> statuses) throws IOException {
         HttpServer http = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
         http.createContext("/", ex -> {
@@ -175,50 +176,6 @@ class HostLogicTest {
         return "http://127.0.0.1:" + h.getAddress().getPort();
     }
 
-    private static final HostApi.PullRequest PR = new HostApi.PullRequest(7, "open", "abc", "def", "main", "feature");
-
-    @Test
-    void githubChecksComeFromRunsStatusesAndGraphql() throws Exception {
-        Map<String, String> a = new HashMap<>();
-        a.put("/repos/o/r/commits/abc/check-runs", "{\"check_runs\":[{\"name\":\"hello\",\"status\":\"completed\",\"conclusion\":\"success\"},"
-                + "{\"name\":\"hello\",\"status\":\"in_progress\"},{\"name\":\"lint\",\"status\":\"completed\",\"conclusion\":\"failure\"}]}");
-        a.put("/repos/o/r/commits/abc/status", "{\"state\":\"pending\",\"total_count\":0,\"statuses\":[]}");
-        a.put("/repos/o/r/actions/runs", "{\"workflow_runs\":[{\"name\":\"CI\",\"event\":\"push\",\"status\":\"completed\",\"conclusion\":\"action_required\"}]}");
-        a.put("/repos/o/r/actions/workflows", "{\"total_count\":1}");
-        a.put("/graphql", "{\"data\":{\"repository\":{\"pullRequest\":{\"commits\":{\"nodes\":[{\"commit\":{\"statusCheckRollup\":{\"contexts\":{\"nodes\":"
-                + "[{\"name\":\"hello\",\"isRequired\":true},{\"name\":\"lint\",\"isRequired\":false}]}}}}]}}}}}");
-        a.put("/repos/o/r/rules/branches/main", "[{\"type\":\"required_status_checks\",\"parameters\":{\"required_status_checks\":[{\"context\":\"later\"}]}}]");
-        HttpServer h = server(a, Map.of());
-        try {
-            Checks c = new GitHubApi(base(h), "t").checks("o/r", PR);
-            assertTrue(c.configured());
-            assertEquals(List.of("later"), c.missingRequired());
-            assertEquals(4, c.checks().size());
-            assertTrue(c.checks().get(0).required());
-            assertEquals(CheckState.PENDING, c.checks().get(1).state());
-            assertFalse(c.checks().get(2).required());
-            assertEquals(CheckState.NEEDS_PERSON, c.checks().get(3).state());
-            assertEquals("push", c.checks().get(3).event());
-        } finally {
-            h.stop(0);
-        }
-    }
-
-    @Test
-    void aZeroCountPendingStatusIsNoPipelines() throws Exception {
-        Map<String, String> a = new HashMap<>();
-        a.put("/repos/o/r/commits/abc/check-runs", "{\"total_count\":0,\"check_runs\":[]}");
-        a.put("/repos/o/r/commits/abc/status", "{\"state\":\"pending\",\"total_count\":0,\"statuses\":[]}");
-        a.put("/repos/o/r/actions/runs", "{\"workflow_runs\":[]}");
-        a.put("/repos/o/r/actions/workflows", "{\"total_count\":0}");
-        HttpServer h = server(a, Map.of());
-        try {
-            assertEquals(Result.NONE, Pipelines.evaluate(new GitHubApi(base(h), "t").checks("o/r", PR)).result());
-        } finally {
-            h.stop(0);
-        }
-    }
-
     @Test
     void theTestNamesWhatsMissing() throws Exception {
         Map<String, String> a = new HashMap<>();
@@ -226,9 +183,7 @@ class HostLogicTest {
         a.put("/repos/o/r", "{\"private\":true,\"default_branch\":\"main\"}");
         a.put("/repos/o/r/commits/main", "{\"sha\":\"abc\"}");
         a.put("/repos/o/r/pulls", "[]");
-        a.put("/repos/o/r/actions/runs", "{}");
-        a.put("/repos/o/r/commits/abc/check-runs", "{}");
-        a.put("/repos/o/r/commits/abc/status", "{}");
+        a.put("/repos/o/r/issues", "[]");
         a.put("/repos/o/r/git/refs", "{\"message\":\"Resource not accessible by personal access token\"}");
         a.put("/repos/o/r/pulls/0/reviews", "{\"message\":\"Not Found\"}");
         HttpServer h = server(a, Map.of("/repos/o/r/git/refs", 403, "/repos/o/r/pulls/0/reviews", 404));
@@ -239,6 +194,7 @@ class HostLogicTest {
             assertTrue(push.detail().contains("contents=write"), push.detail());
             HostApi.TestLine comment = lines.stream().filter(l -> l.what().startsWith("Comment")).findFirst().orElseThrow();
             assertTrue(comment.ok(), "a 404 means the write was allowed; nothing was there to write to");
+            assertTrue(lines.stream().anyMatch(l -> l.what().startsWith("Read issues") && Boolean.TRUE.equals(l.ok())));
             assertTrue(lines.stream().noneMatch(l -> l.detail().contains("secret")));
         } finally {
             h.stop(0);

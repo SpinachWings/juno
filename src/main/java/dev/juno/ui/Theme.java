@@ -25,5 +25,6 @@ public final class Theme {
     public static void apply(Scene scene) {
         loadFonts();
         scene.getStylesheets().add(Theme.class.getResource("/dev/juno/ui/juno.css").toExternalForm());
+        Ui.truncationTips(scene.getRoot());
     }
 }

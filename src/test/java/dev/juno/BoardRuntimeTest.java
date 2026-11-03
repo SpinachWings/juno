@@ -7,7 +7,6 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import dev.juno.git.Git;
-import dev.juno.git.Worktrees;
 import dev.juno.model.Agent;
 import dev.juno.model.Profile;
 import dev.juno.model.Project;
@@ -116,19 +115,14 @@ class BoardRuntimeTest {
     }
 
     @Test
-    void waitingAgentsAndJunoDoNotCountTowardsTheCap() throws Exception {
+    void junoDoesNotCountTowardsTheCap() throws Exception {
         runtime();
         settings.system.maxAgentsWorking = 1;
-        Agent waiting = rt.create("wait", "tester", null, null);
-        waiting.turnOpen = true;
-        waiting.status = Agent.Status.WAITING;
+        rt.juno().turnOpen = true;
+        rt.juno().status = Agent.Status.WORKING;
         Agent b = rt.create("bee", "tester", null, null);
         rt.send(b, "go", "user");
-        assertNotEquals(Agent.Status.QUEUED, b.status);
-    }
-
-    private static void assertNotEquals(Object unexpected, Object actual) {
-        assertFalse(unexpected.equals(actual), "was " + actual);
+        assertFalse(Agent.Status.QUEUED == b.status, "was " + b.status);
     }
 
     @Test
@@ -160,25 +154,19 @@ class BoardRuntimeTest {
     }
 
     @Test
-    void aCoderGetsItsOwnWorktreeAndTheOthersReadTheProjectFolder() throws Exception {
+    void everyAgentWorksInTheProjectFolderAndJunoMakesNoWorktrees() throws Exception {
         runtime();
         Agent cody = coder();
         Agent sally = rt.create("sally", "searcher", "p1", null);
-        assertTrue(rt.usesWorktree(cody));
-        assertFalse(rt.usesWorktree(sally), "a searcher doesn't edit files");
+        assertEquals(repo, rt.folder(cody));
         assertEquals(repo, rt.folder(sally));
-        assertEquals(home.worktree(cody.id), rt.folder(cody));
-        rt.ensureWorktree(cody);
-        assertTrue(Files.isDirectory(home.worktree(cody.id)));
-        assertEquals("juno/cody", cody.branch);
-        assertEquals("main", cody.baseBranch);
-        assertTrue(Files.isRegularFile(home.worktreeHooks(cody.id).resolve("pre-commit")));
-        assertEquals("juno/cody", Worktrees.currentBranch(home.worktree(cody.id)));
-        assertEquals("main", Worktrees.currentBranch(repo), "your checkout is untouched");
+        assertEquals(home.agentHome(rt.create("nop", "searcher", null, null).id), rt.folder(rt.byName("nop").orElseThrow()));
+        assertFalse(Files.exists(home.root().resolve("worktrees")), "Juno doesn't make worktrees any more");
+        assertEquals("main", Git.currentBranch(repo), "your checkout is untouched");
     }
 
     @Test
-    void aProjectThatIsNotARepositoryIsUsedDirectly() throws Exception {
+    void aProjectThatIsNotARepositoryIsUsedDirectlyAndTheBranchIsBlank() throws Exception {
         runtime();
         Path plain = dir.resolve("plain");
         Files.createDirectories(plain);
@@ -188,56 +176,9 @@ class BoardRuntimeTest {
         p.folder = plain.toString();
         settings.projects.add(p);
         Agent cody = rt.create("cody", "coder", "p3", null);
-        assertFalse(rt.usesWorktree(cody));
         assertEquals(plain, rt.folder(cody));
-    }
-
-    @Test
-    void removingAnIdleWorktreeKeepsTheBranchAndItComesBack() throws Exception {
-        runtime();
-        Agent cody = coder();
-        rt.ensureWorktree(cody);
-        Path wt = home.worktree(cody.id);
-        Files.writeString(wt.resolve("work.txt"), "x\n");
-        assertTrue(rt.removeWorktree(cody).contains("uncommitted"));
-        assertTrue(Files.isDirectory(wt));
-        git(wt, "add", "-A");
-        git(wt, "commit", "-q", "-m", "work");
-        assertTrue(rt.removeWorktree(cody).contains("only on juno/cody"), "unpushed commits count");
-        git(repo, "merge", "-q", "juno/cody");
-        assertNull(rt.removeWorktree(cody));
-        assertFalse(Files.exists(wt));
-        assertTrue(Worktrees.branchExists(repo, "juno/cody"));
-        rt.ensureWorktree(cody);
-        assertEquals("juno/cody", Worktrees.currentBranch(wt));
-        assertTrue(Files.exists(wt.resolve("work.txt")));
-    }
-
-    @Test
-    void aWorkingAgentsWorktreeIsNotRemoved() throws Exception {
-        runtime();
-        Agent cody = coder();
-        rt.ensureWorktree(cody);
-        cody.turnOpen = true;
-        cody.status = Agent.Status.WORKING;
-        assertTrue(rt.removeWorktree(cody).contains("not idle"));
-        assertTrue(rt.storage().get(0).hasWorktree());
-        assertFalse(rt.storage().get(0).canRemove());
-    }
-
-    @Test
-    void changingProjectNeedsTheWorktreeToBeSafeToRemove() throws Exception {
-        runtime();
-        Agent cody = coder();
-        rt.ensureWorktree(cody);
-        Files.writeString(home.worktree(cody.id).resolve("wip.txt"), "x\n");
-        String refused = rt.setProject(cody, "p2");
-        assertNotNull(refused);
-        assertEquals("p1", cody.projectId, "nothing changed");
-        Files.delete(home.worktree(cody.id).resolve("wip.txt"));
-        assertNull(rt.setProject(cody, "p2"));
-        assertEquals("p2", cody.projectId);
-        assertFalse(Files.exists(home.worktree(cody.id)));
+        assertNull(rt.setProject(cody, "p1"));
+        assertEquals("p1", cody.projectId, "changing project needs no worktree to be removed");
     }
 
     @Test
@@ -254,12 +195,10 @@ class BoardRuntimeTest {
     // ---------------------------------------------------------------- deletion
 
     @Test
-    void deletingAnAgentRemovesWhatJunoMadeAndKeepsTheBranch() throws Exception {
+    void deletingAnAgentRemovesWhatJunoMadeAndLeavesTheProjectAlone() throws Exception {
         runtime();
         Agent cody = coder();
-        rt.ensureWorktree(cody);
-        Files.writeString(home.worktree(cody.id).resolve("lost.txt"), "x\n");
-        assertTrue(rt.deleteWarning(cody).contains("uncommitted"));
+        Files.writeString(repo.resolve("mine.txt"), "x\n");
         Path transcripts = claude.resolve("projects/some-project");
         Files.createDirectories(transcripts);
         cody.sessionId = "sess-1";
@@ -269,10 +208,48 @@ class BoardRuntimeTest {
         assertNull(rt.delete(cody, false));
         assertTrue(rt.byName("cody").isEmpty());
         assertFalse(Files.exists(home.agentDir(cody.id)));
-        assertFalse(Files.exists(home.worktree(cody.id)));
-        assertFalse(Files.exists(home.worktreeHooks(cody.id)));
-        assertTrue(Worktrees.branchExists(repo, "juno/cody"), "branches are kept");
+        assertTrue(Files.exists(repo.resolve("mine.txt")), "the project folder is never touched");
         assertTrue(Files.exists(transcripts.resolve("sess-1.jsonl")), "Claude Code's transcripts only when asked");
+        Files.delete(repo.resolve("mine.txt"));
+    }
+
+    @Test
+    void anAgentWhoseProfileWasRemovedWaitsForAnotherOne() throws Exception {
+        runtime();
+        Agent old = rt.create("rex", "tester", "p1", null);
+        old.profile = "reviewer";
+        rt.saved(old);
+        rt.shutdown();
+        SettingsStore store = new SettingsStore(home);
+        SkillLibrary lib = new SkillLibrary(home);
+        rt = new AgentRuntime(home, new ClaudeCodeProvider(claude, home), () -> settings,
+                () -> store.save(settings), lib, new SkillResolver(lib));
+        rt.start();
+        Agent rex = rt.byName("rex").orElseThrow();
+        assertEquals(Agent.Status.AWAITING, rex.status);
+        assertEquals(Agent.Reason.PROFILE, rex.reason);
+        assertTrue(rt.refusal(rex).contains("no longer exists"));
+        assertTrue(rt.setProfile(rex, "nope").contains("doesn't exist"));
+        assertTrue(rt.setProfile(rex, "orchestrator").contains("Juno"));
+        assertNull(rt.setProfile(rex, "coder"));
+        assertEquals("coder", rex.profile);
+        assertEquals(Agent.Status.IDLE, rex.status);
+        assertNull(rt.refusal(rex));
+    }
+
+    @Test
+    void anAgentSavedAsWaitingReadsBackAsIdle() throws Exception {
+        runtime();
+        Agent bob = rt.create("bob", "tester", null, null);
+        rt.shutdown();
+        Path file = home.agentDir(bob.id).resolve("agent.json");
+        Files.writeString(file, Files.readString(file).replace("\"status\" : \"IDLE\"", "\"status\" : \"WAITING\""));
+        SettingsStore store = new SettingsStore(home);
+        SkillLibrary lib = new SkillLibrary(home);
+        rt = new AgentRuntime(home, new ClaudeCodeProvider(claude, home), () -> settings,
+                () -> store.save(settings), lib, new SkillResolver(lib));
+        rt.start();
+        assertEquals(Agent.Status.IDLE, rt.byName("bob").orElseThrow().status);
     }
 
     @Test

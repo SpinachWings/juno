@@ -1,13 +1,6 @@
-# Results: get_agent_output, get_agent_context
+# Results: the context summary (/getcontext)
 
-## empty
-{{name}} has no output yet.
-
-## output
-The last {{count}} lines of {{name}}'s output, newest last:
-{{lines}}
-
-## context
+## summary
 {{name}} ({{profile}}) · {{status}} · context {{context}}
 Project: {{project}}
 {{#current}}Current task{{/current}}{{^current}}Last task{{/current}}: {{task}}

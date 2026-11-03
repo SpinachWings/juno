@@ -47,7 +47,7 @@ public interface Provider {
 
     /**
      * MCP config file contents connecting the agent to Juno's server and, under their names, to the host MCP servers
-     * it may use (URLs of Juno's proxy, design §6.6; same token).
+     * it may use (URLs of Juno's proxy, design §6.3; same token).
      */
     String mcpConfig(String junoUrl, String token, Map<String, String> hostServers);
 

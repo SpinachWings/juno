@@ -10,12 +10,8 @@ import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 
-/**
- * What Juno itself asks a host, over REST (design §6.6): PR/MR details for reviews, pipeline polling, required checks,
- * who started a thread, and the key's Test button. Agents never come through here.
- */
+/** What Juno itself asks a host, over REST: the key's Test button (design §5.1). Agents never come through here. */
 public interface HostApi {
     /** The host refused or failed. {@code status} is the HTTP status, 0 if there was no answer. */
     final class HostException extends IOException {
@@ -34,44 +30,8 @@ public interface HostApi {
         }
     }
 
-    record PullRequest(int number, String state, String headSha, String baseSha, String baseRef, String headRef) {
-        public boolean open() {
-            return state.equals("open");
-        }
-    }
-
-    enum CheckState { PASSED, FAILED, PENDING, NEEDS_PERSON }
-
-    /**
-     * One check, status or workflow run on the head commit. {@code event} tells apart runs of one workflow;
-     * {@code run}: a workflow run rather than a check (never itself "required").
-     */
-    record Check(String name, String event, CheckState state, boolean required, boolean run) {}
-
-    /**
-     * Everything on the head commit. {@code missingRequired}: required checks with no result yet;
-     * {@code configured}: the repository has pipelines that may simply not have started on this commit.
-     */
-    record Checks(List<Check> checks, List<String> missingRequired, boolean configured) {}
-
     /** A line of the key's Test result. {@code ok} null: couldn't tell, or nothing to check. */
     record TestLine(String what, Boolean ok, String detail) {}
-
-    /** "#42" or "!42". */
-    String label(int number);
-
-    /** The git ref a PR/MR's head can be fetched from (design §6.5). */
-    String headRef(int number);
-
-    PullRequest pullRequest(String repo, int number) throws IOException;
-
-    /** The open PR/MR whose head is {@code branch}. */
-    Optional<PullRequest> openFor(String repo, String branch) throws IOException;
-
-    Checks checks(String repo, PullRequest pr) throws IOException;
-
-    /** The first comment of a review thread, to tell who started it (design §6.6). */
-    String threadStarter(String repo, int number, String threadId) throws IOException;
 
     /** Checks the key's REST access; {@code repo} blank tests only who the token is (design §5.1). */
     List<TestLine> test(String repo);

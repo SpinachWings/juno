@@ -12,12 +12,12 @@ import org.junit.jupiter.api.Test;
 class PromptsAndProfilesTest {
     private static final Map<String, Object> VALUES = Map.of(
             "agent_name", "bob", "profile_name", "coder", "fresh_start_threshold", 60,
-            "build_and_test_commands", "npm test", "args", "");
+            "build_and_test_commands", "npm test", "args", "", "git_repo", true, "branch", "main");
 
     @Test
-    void sixBuiltInProfilesWithTheirPrompts() {
+    void fourBuiltInProfilesWithTheirPrompts() {
         List<Profile> all = BuiltInProfiles.create();
-        assertEquals(List.of("orchestrator", "coder", "reviewer", "planner", "searcher", "notes writer"),
+        assertEquals(List.of("orchestrator", "coder", "planner", "searcher"),
                 all.stream().map(p -> p.name).toList());
         for (Profile p : all) {
             assertTrue(p.builtIn);
@@ -28,14 +28,36 @@ class PromptsAndProfilesTest {
     }
 
     @Test
-    void coderHasLockedCheckforcomments() {
+    void coderHasLockedCommentAndConflictCommands() {
         Profile coder = BuiltInProfiles.create().get(1);
         assertTrue(coder.editsFiles && coder.needsProjectFolder);
-        assertEquals(1, coder.commands.size());
-        assertEquals("checkforcomments", coder.commands.get(0).name);
-        assertTrue(coder.commands.get(0).builtIn);
-        assertDoesNotThrow(() -> Prompts.render(coder.commands.get(0).template, VALUES));
+        assertEquals(List.of("checkforcomments", "checkformergeconflicts"), coder.commands.stream().map(c -> c.name).toList());
+        for (var c : coder.commands) {
+            assertTrue(c.builtIn);
+            assertDoesNotThrow(() -> Prompts.render(c.template, VALUES));
+        }
         assertTrue(coder.disallowedTools.contains("Bash(gh:*)"));
+        assertTrue(coder.allowedTools.containsAll(List.of("mcp__juno__hand_over", "host:read", "host:open", "host:reply")));
+        assertTrue(coder.allowedTools.stream().noneMatch(t -> t.equals("host:*") || t.equals("host:merge")));
+    }
+
+    @Test
+    void thePlannerCanReadIssuesButNothingElseOnTheHost() {
+        Profile planner = BuiltInProfiles.create().get(2);
+        assertEquals("planner", planner.name);
+        assertTrue(planner.allowedTools.contains("host:read"));
+        assertFalse(planner.allowedTools.contains("host:open") || planner.allowedTools.contains("host:reply"));
+        assertTrue(planner.disallowedTools.containsAll(List.of("Edit", "Write")));
+    }
+
+    @Test
+    void theCoderPromptCoversBranchesCoordinationHandOverAndIssues() {
+        String p = BuiltInProfiles.create().get(1).systemPrompt;
+        for (String must : List.of("git init", "existing branch", "new branch", "using-git-worktrees", "hand_over",
+                "/checkformergeconflicts", "issue")) {
+            assertTrue(p.contains(must), must);
+        }
+        assertFalse(p.toLowerCase().contains("reviewer"));
     }
 
     @Test

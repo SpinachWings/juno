@@ -44,6 +44,11 @@ public final class SettingsStore {
         return UUID.randomUUID().toString().substring(0, 8);
     }
 
+    /** Rules of tools and host actions that no longer exist (reviews, pipelines, merging…); dropped from own profiles. */
+    static final java.util.Set<String> RETIRED_RULES = java.util.Set.of("mcp__juno__start_review", "mcp__juno__end_review",
+            "mcp__juno__get_agent_output", "mcp__juno__get_agent_context", "host:review", "host:resolve", "host:approve",
+            "host:request-changes", "host:merge", "host:close", "host:edit");
+
     /** Fills missing ids and puts the built-in profiles first, with their locked fields from code. */
     static void normalise(Settings s) {
         s.keys.forEach(k -> { if (k.id == null || k.id.isBlank()) k.id = newId(); });
@@ -64,7 +69,10 @@ public final class SettingsStore {
             merged.add(builtIn);
         }
         for (Profile p : s.profiles) {
-            if (!p.builtIn && !BuiltInProfiles.isBuiltIn(p.name)) merged.add(p);
+            if (p.builtIn || BuiltInProfiles.isBuiltIn(p.name)) continue;
+            p.allowedTools.removeIf(RETIRED_RULES::contains);
+            p.disallowedTools.removeIf(RETIRED_RULES::contains);
+            merged.add(p);
         }
         s.profiles = merged;
     }

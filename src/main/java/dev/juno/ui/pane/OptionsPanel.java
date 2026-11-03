@@ -105,8 +105,7 @@ final class OptionsPanel extends ScrollPane {
             Label projectNote = Ui.dim("");
             String pending = runtime.pendingProject(agent);
             if (pending != null) projectNote.setText("Changes when " + agent.name + " isn't working any more.");
-            else if (runtime.usesWorktree(agent)) projectNote.setText("Works in its own worktree"
-                    + (agent.branch.isBlank() ? "" : ", branch " + agent.branch) + ".");
+            else if (!agent.branch.isBlank()) projectNote.setText("Works in the project folder, on branch " + agent.branch + ".");
             Button setProject = Ui.button("Change project", () -> {
                 if (project.getValue() == null) return;
                 String msg = runtime.requestProject(agent, project.getValue().id);
@@ -187,7 +186,7 @@ final class OptionsPanel extends ScrollPane {
         box.getChildren().add(Ui.subheading("Delete"));
         Button delete = Ui.button("Delete " + agent.name + "…", this::delete);
         delete.getStyleClass().add("danger");
-        box.getChildren().addAll(Ui.dim("Removes " + agent.name + ", its worktree (the branch stays), journals, logs, "
+        box.getChildren().addAll(Ui.dim("Removes " + agent.name + ", its journals, logs, "
                 + "conversations list and rules."), delete);
     }
 
@@ -272,9 +271,7 @@ final class OptionsPanel extends ScrollPane {
 
     private void delete() {
         var owner = getScene().getWindow();
-        String warning = runtime.deleteWarning(agent);
-        if (!Ui.confirm(owner, "Delete " + agent.name + "?", (warning == null ? "" : warning + "\n\n")
-                + "This removes " + agent.name + " and what Juno made for it. It can't be undone.", "Delete")) return;
+        if (!Ui.confirm(owner, "Delete " + agent.name + "?", "This removes " + agent.name + " and what Juno made for it. It can't be undone.", "Delete")) return;
         boolean transcripts = false;
         List<Path> theirs = runtime.transcriptsOf(agent);
         if (!theirs.isEmpty()) {

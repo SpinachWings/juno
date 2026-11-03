@@ -31,8 +31,7 @@ import javax.imageio.ImageIO;
 /**
  * Not a unit test: drives the real window against a scratch Juno home and a scratch git repository, writing a screenshot
  * after each step. Usage: {@code java -cp ... dev.juno.ui.BoardScreens <scratch dir> <output dir> <scenario>}.
- * Scenarios: {@code layout} (no CLI), {@code edit2} (two real haiku agents in worktrees, the queue, a refused commit),
- * {@code crash1} + {@code crash2} (several agents cut off mid-turn, then recovery; same scratch dir).
+ * Scenarios: {@code layout} (no CLI), {@code crash1} + {@code crash2} (several agents cut off mid-turn, then recovery; same scratch dir).
  */
 public final class BoardScreens {
     private static Path out;
@@ -53,7 +52,6 @@ public final class BoardScreens {
             git(repo, "init", "-q", "-b", "main");
             git(repo, "add", ".");
             git(repo, "-c", "user.name=t", "-c", "user.email=t@t", "commit", "-qm", "init");
-            git(repo, "switch", "-q", "-c", "dev"); // frees main so a worktree can try to commit to it
         }
         TokenStore memory = new TokenStore() {
             public boolean vaultAvailable() { return true; }
@@ -102,7 +100,6 @@ public final class BoardScreens {
         Thread.sleep(1000);
         switch (scenario) {
             case "layout" -> layout();
-            case "edit2" -> edit2();
             case "crash1" -> crash1();
             case "crash2" -> crash2();
             default -> throw new IllegalArgumentException(scenario);
@@ -132,8 +129,6 @@ public final class BoardScreens {
         Agent beta = create("beta", "tester", null);
         Agent gamma = create("gamma", "tester", "p1");
         Thread.sleep(600);
-        // an agent that works in a worktree: make it for the screenshots
-        ctx.runtime.ensureWorktree(alpha);
         gamma.rules.add(new Agent.AgentRule("Bash(npm test:*)", "npm test, with any arguments", "npm test -- --watch"));
         long now = System.currentTimeMillis();
         for (int i = 0; i < 2; i++) {
@@ -229,66 +224,6 @@ public final class BoardScreens {
                 + " same=" + before.equals(window.board().layout().leaves()));
         System.out.println(json);
         shot("13-reopened");
-    }
-
-    private static void edit2() throws Exception {
-        ctx.settings.system.maxAgentsWorking = 4;
-        click("Cancel"); // the first-run setup cell
-        Agent ed1 = create("ed1", "editor", "p1");
-        Agent ed2 = create("ed2", "editor", "p1");
-        Thread.sleep(500);
-        type(ed1, "Create the file one.txt containing exactly: from ed1. Use the Write tool. Then run "
-                + "`git add one.txt` and `git commit -m one` with Bash. Reply with the branch name from `git branch --show-current`.");
-        type(ed2, "Create the file two.txt containing exactly: from ed2. Use the Write tool. Then run "
-                + "`git add two.txt` and `git commit -m two` with Bash. Reply with the branch name from `git branch --show-current`.");
-        approveUntilIdle(ed1, ed2);
-        shot("20-two-editors-done");
-        System.out.println("WORKTREES " + git(repo, "worktree", "list"));
-        System.out.println("BRANCHES " + git(repo, "branch", "--list", "--format=%(refname:short) %(objectname:short)"));
-        System.out.println("ED1 log " + git(ctx.home.worktree(ed1.id), "log", "--oneline", "-3"));
-        System.out.println("ED2 log " + git(ctx.home.worktree(ed2.id), "log", "--oneline", "-3"));
-        System.out.println("CHECKOUT status (must be clean, no one.txt/two.txt) " + git(repo, "status", "--short")
-                + " files=" + Files.exists(repo.resolve("one.txt")) + "/" + Files.exists(repo.resolve("two.txt")));
-
-        // the queue: one at a time
-        ctx.settings.system.maxAgentsWorking = 1;
-        type(ed1, "Write out the numbers from 1 to 250, one per line, in plain text, nothing else.");
-        Thread.sleep(1500);
-        type(ed2, "Reply with the single word: two.");
-        Thread.sleep(800);
-        shot("21-queued");
-        System.out.println("QUEUE REFUSAL " + ctx.runtime.refusal(ed2));
-        System.out.println("STATUS ed1=" + ed1.statusText() + " ed2=" + ed2.statusText());
-        approveUntilIdle(ed1, ed2);
-        ctx.settings.system.maxAgentsWorking = 4;
-
-        // a refused commit onto main
-        type(ed1, "Run these Bash commands one at a time and then tell me exactly what git printed for the last "
-                + "one: `git switch main`, `git commit --allow-empty -m bad`. Do not work around any refusal.");
-        approveUntilIdle(ed1);
-        run(() -> window.board().toggleMaximise(ed1.id));
-        Thread.sleep(500);
-        shot("22-refused-commit");
-        run(() -> window.board().toggleMaximise(ed1.id));
-        System.out.println("MAIN log (must have one commit) " + git(repo, "log", "--oneline", "main"));
-
-        // hide, show, swap, maximise with live agents
-        run(() -> window.board().hide(ed2.id));
-        Thread.sleep(400);
-        shot("23-ed2-hidden");
-        run(() -> window.board().showAgent(ed2));
-        Thread.sleep(400);
-        run(() -> window.board().swap(ed1.id, ed2.id));
-        Thread.sleep(400);
-        run(() -> window.board().toggleMaximise(ed1.id));
-        Thread.sleep(400);
-        shot("24-ed1-maximised");
-        run(() -> window.board().toggleMaximise(ed1.id));
-        Thread.sleep(300);
-        shot("25-after-swap");
-
-        // a hook bypass attempt from the worktree must also fail at the git level
-        System.out.println("HOOKS " + Files.list(ctx.home.worktreeHooks(ed1.id)).map(p -> p.getFileName().toString()).sorted().toList());
     }
 
     private static void crash1() throws Exception {

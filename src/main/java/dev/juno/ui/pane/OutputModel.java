@@ -249,10 +249,10 @@ final class OutputModel {
 
         @Override
         void render(StyledDoc d, int depth) {
-            boolean fromUser = from.equals("user") || from.equals("hey") || from.equals("broadcast");
+            boolean fromUser = from.equals("user") || from.equals("hey");
             d.line(ind(depth, "gap-top"));
             if (fromUser) {
-                d.add("› you" + (from.equals("hey") ? " (extra info)" : from.equals("broadcast") ? " (to every agent)" : ""),
+                d.add("› you" + (from.equals("hey") ? " (extra info)" : ""),
                         "who-user").newline();
                 for (String line : text.split("\n", -1)) d.line(ind(depth, "user-line")).add(line, "user-text").newline();
                 return;
@@ -394,7 +394,7 @@ final class OutputModel {
             }
             if (tool.name().equals("Bash")) Highlight.write(d, first, true, "tool-input");
             else d.add(first, "tool-input");
-            if (sum.contains("\n")) d.add(" …", "dim");
+            if (sum.contains("\n")) d.tip(sum, () -> d.add(" …", "dim"));
             d.add(status, result == null ? "dim" : error ? "bad" : "good");
             d.newline();
             if (tool.name().equals("Bash") && sum.contains("\n") && open) {
@@ -437,7 +437,7 @@ final class OutputModel {
             }
             d.newline();
             if (error != null) {
-                d.line(ind(depth + 1)).add("✗ " + AgentPromptsFirst.line(error), "bad").newline();
+                d.line(ind(depth + 1)).add("✗ ", "bad").shortened(error, 200, "bad").newline();
                 return;
             }
             if (newFile) {
@@ -537,7 +537,7 @@ final class OutputModel {
             d.newline();
             if (!expanded) return;
             if (!s.prompt().isBlank()) {
-                d.line(ind(depth + 1)).add("task: ", "quiet").add(AgentPromptsFirst.line(s.prompt()), "dim").newline();
+                d.line(ind(depth + 1)).add("task: ", "quiet").shortened(s.prompt(), 200, "dim").newline();
             }
             for (Block c : children) c.render(d, depth + 1);
             if (result != null && !result.isBlank() && children.stream().noneMatch(c -> c instanceof MessageBlock)) {
@@ -595,7 +595,7 @@ final class OutputModel {
             };
             List<String> line = ind(depth, pending ? "perm-pending" : "perm-done", "gap-top");
             d.line(line).add("🔐 " + agentNameSource.get() + " wants " + p.tool() + ": ", pending ? "perm-title" : "dim");
-            d.add(AgentPromptsFirst.line(what), pending ? "plain" : "dim");
+            d.shortened(what, 200, pending ? "plain" : "dim");
             d.newline();
             if (pending) {
                 if (p.tool().equals("Edit") || p.tool().equals("MultiEdit")) {
@@ -635,14 +635,5 @@ final class OutputModel {
         }
     }
 
-    /** First line of a text, shortened. */
-    static final class AgentPromptsFirst {
-        static String line(String s) {
-            if (s == null) return "";
-            String t = s.strip();
-            int nl = t.indexOf('\n');
-            if (nl >= 0) t = t.substring(0, nl) + " …";
-            return t.length() > 200 ? t.substring(0, 200) + "…" : t;
-        }
-    }
+
 }

@@ -92,6 +92,47 @@ public final class Ui {
         return node;
     }
 
+    /**
+     * Wherever a label, button, tab, list or tree row shows its text cut short with an ellipsis, hovering it shows the
+     * whole text in a tooltip (unless it has a tooltip of its own). Install once on a scene's root, or a popup's content.
+     */
+    public static void truncationTips(Node root) {
+        root.addEventFilter(javafx.scene.input.MouseEvent.MOUSE_ENTERED_TARGET, e -> {
+            for (Node n = e.getTarget() instanceof Node t ? t : null; n != null; n = n.getParent()) {
+                if (n instanceof javafx.scene.control.Labeled l) {
+                    showWholeTextWhenCut(l);
+                    return;
+                }
+            }
+        });
+    }
+
+    private static final String TRUNCATION_TIP = "juno-truncation-tip";
+
+    private static void showWholeTextWhenCut(javafx.scene.control.Labeled l) {
+        Object mine = l.getProperties().get(TRUNCATION_TIP);
+        if (l.getTooltip() != null && l.getTooltip() != mine) return; // an explicit tooltip says it better
+        String full = l.getText();
+        boolean cut = false;
+        if (full != null && !full.isBlank()) {
+            javafx.scene.Node text = l.lookup(".text");
+            cut = text instanceof javafx.scene.text.Text t && !t.getText().equals(full);
+        }
+        if (cut) {
+            Tooltip tip = mine instanceof Tooltip t ? t : new Tooltip();
+            tip.setText(full);
+            tip.setWrapText(true);
+            tip.setMaxWidth(560);
+            if (mine == null) {
+                l.getProperties().put(TRUNCATION_TIP, tip);
+                l.setTooltip(tip);
+            }
+        } else if (mine != null) {
+            l.setTooltip(null);
+            l.getProperties().remove(TRUNCATION_TIP);
+        }
+    }
+
     public static void info(Window owner, String title, String text) {
         alert(Alert.AlertType.INFORMATION, owner, title, text);
     }
@@ -105,6 +146,7 @@ public final class Ui {
         a.setHeaderText(title);
         if (owner != null) a.initOwner(owner);
         a.getDialogPane().getStylesheets().setAll(Theme.class.getResource("/dev/juno/ui/juno.css").toExternalForm());
+        truncationTips(a.getDialogPane());
         a.showAndWait();
     }
 

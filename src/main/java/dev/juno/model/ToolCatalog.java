@@ -4,7 +4,7 @@ import java.util.List;
 
 /**
  * The tools a profile can allow or disallow, for the tools reference in Settings → Agent profiles (design §5.4).
- * The host (GitHub / GitLab) entries are per action, because Juno's proxy decides by action (design §6.6).
+ * The host (GitHub / GitLab) entries are per action, because Juno's proxy decides by action (design §6.3).
  */
 public final class ToolCatalog {
     public enum Group {
@@ -24,7 +24,7 @@ public final class ToolCatalog {
             new Tool("Read", Group.FILES, "Read files."),
             new Tool("Grep", Group.FILES, "Search file contents."),
             new Tool("Glob", Group.FILES, "Find files by name pattern."),
-            new Tool("Edit", Group.FILES, "Change files. Agents that edit get their own worktree (\"Edits files\")."),
+            new Tool("Edit", Group.FILES, "Change files."),
             new Tool("Write", Group.FILES, "Create or overwrite files."),
             new Tool("NotebookEdit", Group.FILES, "Edit Jupyter notebook cells."),
             new Tool("Bash", Group.SHELL, "Any shell command. Prefer narrower rules below."),
@@ -48,23 +48,11 @@ public final class ToolCatalog {
             new Tool("mcp__juno__request_folder", Group.JUNO, "Every profile. Ask the user to give the agent a "
                     + "project."),
             new Tool("mcp__juno__assign_task", Group.JUNO, "Orchestrator only. Hand an agent a task."),
-            new Tool("mcp__juno__get_agent_output", Group.JUNO, "Orchestrator only. Recent output of an agent."),
-            new Tool("mcp__juno__get_agent_context", Group.JUNO, "Orchestrator only. An agent's context summary."),
+            new Tool("mcp__juno__hand_over", Group.JUNO, "Give work to a linked agent that edits files and is idle."),
             new Tool("mcp__juno__set_link", Group.JUNO, "Orchestrator only. Open or close a link between agents."),
-            new Tool("mcp__juno__start_review", Group.JUNO, "Reviewers. Wait for a PR/MR's pipelines, then open a "
-                    + "review snapshot. Any profile that allows it can review."),
-            new Tool("mcp__juno__end_review", Group.JUNO, "Reviewers. Remove the review snapshot."),
-            new Tool("host:read", Group.HOST, "Read PRs/MRs, diffs, files, commits, threads, checks and pipelines."),
+            new Tool("host:read", Group.HOST, "Read PRs/MRs, diffs, files, commits, review threads and issues."),
             new Tool("host:open", Group.HOST, "Open a PR/MR."),
-            new Tool("host:reply", Group.HOST, "Reply to a review thread."),
-            new Tool("host:review", Group.HOST, "Post a review: inline comments and a summary, COMMENT only. Only "
-                    + "during a review (start_review), and after the user has answered."),
-            new Tool("host:resolve", Group.HOST, "Resolve review threads the agent started itself."),
-            new Tool("host:approve", Group.HOST, "Approve a PR/MR."),
-            new Tool("host:request-changes", Group.HOST, "Submit a review that requests changes."),
-            new Tool("host:merge", Group.HOST, "Merge a PR/MR."),
-            new Tool("host:close", Group.HOST, "Close a PR/MR."),
-            new Tool("host:edit", Group.HOST, "Edit a PR/MR's title, description, base or other state."));
+            new Tool("host:reply", Group.HOST, "Reply to a review thread."));
 
     private ToolCatalog() {}
 

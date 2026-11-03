@@ -97,7 +97,6 @@ public final class Validation {
         if (s.freshStartThreshold < 1 || s.freshStartThreshold > 100) errors.add("Fresh-start threshold is 1–100 %.");
         if (s.reportLength < 100) errors.add("Report length must be at least 100 characters.");
         if (s.hopLimit < 1) errors.add("Hop limit must be at least 1.");
-        if (s.pipelineWaitLimitMinutes < 1) errors.add("Pipeline wait limit must be at least 1 minute.");
         if (s.maxAgentsWorking < 1) errors.add("Max agents working at once must be at least 1.");
         if (s.idleTimeoutMinutes < 1) errors.add("Idle process timeout must be at least 1 minute.");
         if (s.notesFolder != null && !s.notesFolder.isBlank()) {

@@ -15,11 +15,11 @@ Desktop orchestrator for coding agents. The spec is `docs/design.md`; it is buil
   - `provider`: `Provider` interface + `AgentEvent` types; `provider.claude`: `ClaudeCodeProvider` (command line,
     stream-json parser, hook installer, MCP config)
   - `runtime`: `AgentRuntime`, `AgentProcess`, `Journal`
-  - `comms`: `JunoMcpServer`, links, delegation/approvals, reports, loop guard, pipeline polling
-  - `git`: agent worktrees, review snapshots, credential helper, `/diff`
+  - `comms`: `JunoMcpServer`, links, delegation/approvals, reports, loop guard, host MCP proxy rules
+  - `git`: git environment and credential helper for agents, `/diff`
   - `prompts`: built-in prompt templates (§11)
   - `skills`: skill library, bundled packs, per-agent plugin folders
-  - `ui`: board, panes, output blocks, setup form/options menu, settings tabs, notepad, filter list
+  - `ui`: board, panes, output blocks, setup form/options menu, settings tabs, notepad, PRs tab, filter list
 - All data under `~/.juno`, overridable with `JUNO_HOME`. Every write is atomic (temp file + move).
 - Tokens are never logged, shown in full, or put in prompts.
 - All text sent to agents lives in `docs/prompts/` (format in `docs/prompts/README.md`), never inline in Java.
