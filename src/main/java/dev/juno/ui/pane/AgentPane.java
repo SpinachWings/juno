@@ -232,10 +232,6 @@ public final class AgentPane {
         options.setVisible(show);
     }
 
-    public boolean optionsOpen() {
-        return options.isVisible();
-    }
-
     public Agent agent() {
         return agent;
     }

@@ -58,12 +58,8 @@
     <resources>
       <resource>
         <directory>src/main/resources</directory>
-      </resource>
-      <!-- One copy of the built-in prompts: docs/prompts is the source of truth (docs/prompts/README.md). -->
-      <resource>
-        <directory>docs/prompts</directory>
-        <targetPath>dev/juno/prompts</targetPath>
-        <excludes><exclude>README.md</exclude></excludes>
+        <!-- The prompts' format notes are documentation, not a prompt. -->
+        <excludes><exclude>dev/juno/prompts/README.md</exclude></excludes>
       </resource>
     </resources>
     <plugins>

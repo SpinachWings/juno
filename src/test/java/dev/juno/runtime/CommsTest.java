@@ -534,7 +534,7 @@ class CommsTest {
         assertNotNull(jim);
     }
 
-    // ---------------------------------------------------------------- hand_over (design §4.5)
+    // ---------------------------------------------------------------- hand_over (design §4.4)
 
     private Agent coder(String name) {
         return rt.create(name, "coder2", null, null);

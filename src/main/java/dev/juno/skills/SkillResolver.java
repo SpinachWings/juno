@@ -8,7 +8,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
-/** Which skills a profile's agents get (design §5.5). Milestone 2 turns this into the session-only plugin folder. */
+/** Which skills a profile's agents get (design §5.5). Used to build the session-only plugin folder. */
 public final class SkillResolver {
     private final SkillLibrary library;
 

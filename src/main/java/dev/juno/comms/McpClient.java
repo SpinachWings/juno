@@ -15,7 +15,7 @@ import java.util.concurrent.atomic.AtomicLong;
 /**
  * A client for a host's MCP server (streamable HTTP, JSON or event-stream answers), with the key's token in its header.
  * Holds the session the server gives on {@code initialize}; GitHub answers an HTML "Bad request" without the protocol
- * header (docs/progress.md, Milestone 5a).
+ * header.
  */
 public final class McpClient {
     private static final String PROTOCOL = "2025-06-18";

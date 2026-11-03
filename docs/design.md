@@ -174,7 +174,7 @@ without a key for its project's host shows a warning in its setup form (§7.10).
 - **Claude Code path** (default `claude` on PATH), used by profiles without their own.
 - **Juno asks before assigning** (§4.2), **Tell Juno about direct tasks**, **Fresh-start threshold** (default 60 %).
 - **Report length** (default 800 characters), **Hop limit** (default 10).
-- **Max agents working at once**; **idle process timeout** (an idle agent's process is closed; its next message
+- **Max agents working at once** (default 4); **idle process timeout** (default 10 minutes; an idle agent's process is closed; its next message
   resumes it).
 - **Notes folder** (§9).
 - **Storage:** space per agent and total (journals and logs of the current and of earlier conversations) and **Clean up
@@ -234,33 +234,8 @@ the built-in prompts (§11) read-only.
 
 Every profile also gets the "every profile" Juno tools (§4.4). Host MCP tool names are in §6.3. Profiles that existed
 earlier (a reviewer, a notes writer) are gone: an agent that had one waits at **Awaiting decision ⚙** until you pick
-another profile for it in its pane or the inbox; its conversation, project and keys are kept, and a profile of your own
-that allowed the removed tools simply loses those rules.
-
-### 6.3 Host MCP access
-Agents never talk to GitHub's or GitLab's MCP server directly. Their `mcp.json` points at a **thin proxy in Juno's MCP
-server**. It does three things and decides nothing: it **holds the key's token** (the agent only ever has Juno's own
-per-process token, so it can't read or reuse the host token), it **puts the 🤖 marker** ("🤖 name (profile):") in front of
-replies, and it **notes each PR/MR that gets opened** for the PRs tab (§7.11). Every other call goes through unchanged.
-
-**What an agent may do is the host's job and Claude Code's.** A profile lists shorthands: `host:read`, `host:open`,
-`host:reply` (and `host:*` for every tool of the server). When the process starts Juno expands them into Claude Code's
-own rules for that host's tools, so those run without asking, while **every other tool of the host (merge, close,
-approve, resolve, create branches…) makes Claude Code ask you** through the permission prompt (§7.5). A `host:` rule
-in a profile's *disallowed* tools is expanded the same way and blocks them outright. A profile with no host rule gets no
-host server at all. What a key can do at all is limited by its permissions and by the host's own rules (protected
-branches, required reviews): use a bot account that can't merge or push to the default branch.
-
-| Shorthand | GitHub tools (`api.githubcopilot.com/mcp/`) | GitLab tools (`<host>/api/v4/mcp`, 18.3+; GA in 19.5) |
-| --- | --- | --- |
-| `host:read` | `pull_request_read` (incl. `mergeable` / `mergeable_state`, threads, files, diff), `issue_read`, `list_issues`, `search_issues`, `list_pull_requests`, `search_pull_requests`, `get_file_contents`, `list_commits`, `get_commit`, `list_branches` | `get_merge_request` (incl. `has_conflicts`, `detailed_merge_status`, discussions), `get_issue`, `list_issues`, `list_merge_requests`, `get_project` |
-| `host:open` | `create_pull_request` | `create_merge_request` (`save_merge_request` without `merge_request_iid` also opens one, but it also edits and closes, so it is not in the shorthand and asks) |
-| `host:reply` | `add_reply_to_pull_request_comment` | `save_note` (`save_merge_request_review` `reply_discussion` also replies; it asks) |
-
-**By default:** the coder has `host:read`, `host:open` and `host:reply`; the planner has `host:read`; no other profile has
-host access. Tool names for GitHub were read from the live server; GitLab's come from its documentation and are
-re-checked at the first GitLab run (§13). The GitHub server needs the `Mcp-Protocol-Version` header and exposes extra
-toolsets at `/mcp/x/<toolset>`; the proxy asks for the default toolset plus `actions` (read-only listings).
+another profile for it in its pane or the inbox; its conversation, project and keys are kept. Rules for the removed tools in a profile of your own are not
+migrated; they match nothing.
 
 ### 6.1 What each system prompt covers
 - **orchestrator (Juno):** does five things: opens links, closes links, passes on reports from single agents, gives
@@ -321,6 +296,31 @@ The coder never resolves threads (its prompt forbids it, and resolving isn't amo
 4. When every file is resolved: build and test, commit the merge, push normally (never forced), and report.
 
 Both happen in the agent's own folder; nothing is resolved on the host.
+
+### 6.3 Host MCP access
+Agents never talk to GitHub's or GitLab's MCP server directly. Their `mcp.json` points at a **thin proxy in Juno's MCP
+server**. It does three things and decides nothing: it **holds the key's token** (the agent only ever has Juno's own
+per-process token, so it can't read or reuse the host token), it **puts the 🤖 marker** ("🤖 name (profile):") in front of
+replies, and it **notes each PR/MR that gets opened** for the PRs tab (§7.11). Every other call goes through unchanged.
+
+**What an agent may do is the host's job and Claude Code's.** A profile lists shorthands: `host:read`, `host:open`,
+`host:reply` (and `host:*` for every tool of the server). When the process starts Juno expands them into Claude Code's
+own rules for that host's tools, so those run without asking, while **every other tool of the host (merge, close,
+approve, resolve, create branches…) makes Claude Code ask you** through the permission prompt (§7.5). A `host:` rule
+in a profile's *disallowed* tools is expanded the same way and blocks them outright. A profile with no host rule gets no
+host server at all. What a key can do at all is limited by its permissions and by the host's own rules (protected
+branches, required reviews): use a bot account that can't merge or push to the default branch.
+
+| Shorthand | GitHub tools (`api.githubcopilot.com/mcp/`) | GitLab tools (`<host>/api/v4/mcp`, 18.3+; GA in 19.5) |
+| --- | --- | --- |
+| `host:read` | `pull_request_read` (incl. `mergeable` / `mergeable_state`, threads, files, diff), `issue_read`, `list_issues`, `search_issues`, `list_pull_requests`, `search_pull_requests`, `get_file_contents`, `list_commits`, `get_commit`, `list_branches` | `get_merge_request` (incl. `has_conflicts`, `detailed_merge_status`, discussions), `get_issue`, `list_issues`, `list_merge_requests`, `get_project` |
+| `host:open` | `create_pull_request` | `create_merge_request` (`save_merge_request` without `merge_request_iid` also opens one, but it also edits and closes, so it is not in the shorthand and asks) |
+| `host:reply` | `add_reply_to_pull_request_comment` | `save_note` (`save_merge_request_review` `reply_discussion` also replies; it asks) |
+
+**By default:** the coder has `host:read`, `host:open` and `host:reply`; the planner has `host:read`; no other profile has
+host access. Tool names for GitHub were read from the live server; GitLab's come from its documentation and are
+re-checked at the first GitLab run (§13). The GitHub server needs the `Mcp-Protocol-Version` header and exposes extra
+toolsets at `/mcp/x/<toolset>`; the proxy asks for the default toolset plus `actions` (read-only listings).
 
 ## 7. Board
 
@@ -562,12 +562,10 @@ Besides profiles' system prompts, all natural-language text Juno sends lives as 
 - Token usage and context size recorded per turn for every agent.
 
 ## 13. Open items
-**To write (Milestone 0):** the built-in profiles' system prompts (§6.1) and the prompt templates (§11).
-
-**Answered by Milestone 5a** (see §6.3 and `docs/progress.md`): the tools exist on both hosts; some dangerous actions are
+**Answered** (see §6.3): the tools exist on both hosts; some dangerous actions are
 options of tools a profile needs; since the reviewer is gone, Juno no longer filters per action: Claude Code's own rules decide (§6.3);
 GitLab's MCP server takes a fine-grained PAT only, so a GitLab key holds two tokens (§5.1).
 
-**Verified live on GitHub** (Milestone 5a): opening a PR, reply, close, and reads. **Still to verify:** everything on
+**Verified live on GitHub:** opening a PR, reply, close, and reads. **Still to verify:** everything on
 GitLab (names are from its documentation), including `/checkforcomments`, `/checkformergeconflicts` and reading issues;
 GitHub's `issue_read` and `mergeable_state` with real data; the `<name>.ghe.com` MCP URL.

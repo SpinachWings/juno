@@ -14,7 +14,7 @@ import java.util.regex.Pattern;
 
 /** Claude Code version check (design §10). */
 public final class ClaudeVersion {
-    /** The version Juno's flags were verified against. Raise it when a milestone relies on newer flags. */
+    /** The version Juno's flags were verified against. Raise it when Juno relies on newer flags. */
     public static final String MINIMUM = "2.1.314";
 
     private static final Pattern VERSION = Pattern.compile("(\\d+)\\.(\\d+)\\.(\\d+)");

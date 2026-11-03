@@ -53,8 +53,6 @@ public final class ClaudeCodeProvider implements Provider {
 
     @Override public String uninstallHook() { return hook.uninstall(); }
 
-    public HookInstaller hookInstaller() { return hook; }
-
     @Override
     public Path configFolder() { return hook.claudeDir(); }
 

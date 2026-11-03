@@ -309,7 +309,7 @@ public final class JunoMcpServer {
         return r;
     }
 
-    /** A tool's description and parameters, from {@code docs/prompts/tools/<tool>.md}. */
+    /** A tool's description and parameters, from {@code prompts/tools/<tool>.md}. */
     static ObjectNode toolSchema(String tool, Map<String, ?> values) {
         ObjectNode t = Json.MAPPER.createObjectNode();
         t.put("name", tool);

@@ -5,8 +5,7 @@ side by side on a board of terminal panes. One agent, **Juno**, is always there:
 tasks (asking you first when you didn't say who), collects their reports and links agents when you ask. Everything
 is driven through the [Claude Code](https://claude.com/claude-code) CLI.
 
-The full spec is [docs/design.md](docs/design.md). What is built, and what is not yet verified, is in
-[docs/progress.md](docs/progress.md).
+The full spec is [docs/design.md](docs/design.md).
 
 ## Requirements
 
@@ -93,3 +92,15 @@ Everything is under `~/.juno` (or `JUNO_HOME`); every write is atomic.
 | `hooks/`, `hook-events/` | the Claude hook script and the events it reports |
 
 Juno never touches your project folders' git config, branches or worktrees. Agents never get the notes folder.
+
+## Not yet verified
+
+- **GitLab** end to end: its MCP tool names come from documentation, so a wrong name means an extra permission
+  prompt, not an open door. The `<name>.ghe.com` MCP URL is also unverified.
+- GitHub with real data: `issue_read`, `mergeable_state`, a failing or required check, private repositories.
+- `/checkformergeconflicts`, `hand_over` and issue reading against real hosts and models (hand-over is tested with a
+  fake provider).
+- A token missing a permission was not tried live; the Test button's failing write checks are unit tested only.
+- The full manual pass in the running app (every settings tab, every command, every status) was not done.
+- Dragging a pane or a notes row onto another with a real mouse; the underlying moves are tested.
+- If `claude` isn't on `PATH`, agents fail until Settings has its full path.

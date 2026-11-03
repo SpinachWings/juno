@@ -14,7 +14,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** The git environment (design §5.1.1) and review snapshots (§6.5), with real git and only local repositories. */
+/** The git environment (design §5.1.1), with real git and only local repositories. */
 class GitAccessTest {
     @TempDir Path dir;
     private Path origin, repo;

@@ -727,7 +727,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
         drainQueue();
     }
 
-    /** The final reply's last paragraph starts with ❓ (docs/progress.md, Milestone 0 decision 1). */
+    /** The final reply's last paragraph starts with ❓. */
     public static boolean endsWithQuestion(String reply) {
         if (reply == null || reply.isBlank()) return false;
         String[] paras = reply.strip().split("\n\\s*\n");
@@ -973,7 +973,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
 
     public String requestFolder(String agentId, String reason) {
         LiveAgent l = live.get(agentId);
-        if (l == null) return AgentPrompts.result("common", "call-failed", Map.of("reason", "this agent no longer exists"));
+        if (l == null) return AgentPrompts.agentGone();
         synchronized (this) {
             l.folderReason = reason == null || reason.isBlank() ? "It needs a project." : reason;
             setStatus(l, Status.AWAITING, Reason.FOLDER, l.folderReason);
@@ -1033,7 +1033,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
     @Override
     public ObjectNode requestPermission(String agentId, String tool, JsonNode input, String toolUseId) {
         LiveAgent l = live.get(agentId);
-        if (l == null) return deny(AgentPrompts.result("common", "call-failed", Map.of("reason", "this agent no longer exists")));
+        if (l == null) return deny(AgentPrompts.agentGone());
         Agent a = l.agent;
         Profile p = profile(a.profile);
         Path folder = folder(a);
@@ -1517,7 +1517,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
     @Override
     public String refusal(String agentId, String tool) {
         LiveAgent l = live.get(agentId);
-        if (l == null) return AgentPrompts.result("common", "call-failed", Map.of("reason", "this agent no longer exists"));
+        if (l == null) return AgentPrompts.agentGone();
         return orchestration.refusal(l.agent, tool);
     }
 

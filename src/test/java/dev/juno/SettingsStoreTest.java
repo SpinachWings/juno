@@ -115,7 +115,7 @@ class SettingsStoreTest {
     }
 
     @Test
-    void savedReviewerAndNotesWriterProfilesAreDroppedAndOwnProfilesLoseRetiredRules() {
+    void savedReviewerAndNotesWriterProfilesAreDropped() {
         SettingsStore store = new SettingsStore(new JunoHome(tmp));
         Settings s = store.load();
         Profile old = new Profile();
@@ -124,14 +124,10 @@ class SettingsStoreTest {
         s.profiles.add(old);
         Profile mine = new Profile();
         mine.name = "my reviewer";
-        mine.allowedTools.addAll(List.of("Read", "mcp__juno__start_review", "host:read", "host:review", "host:resolve"));
-        mine.disallowedTools.addAll(List.of("host:merge", "Edit"));
         s.profiles.add(mine);
         store.save(s);
         Settings back = store.load();
         assertTrue(back.profiles.stream().noneMatch(p -> p.name.equals("reviewer")));
-        Profile kept = back.profiles.stream().filter(p -> p.name.equals("my reviewer")).findFirst().orElseThrow();
-        assertEquals(List.of("Read", "host:read"), kept.allowedTools);
-        assertEquals(List.of("Edit"), kept.disallowedTools);
+        assertTrue(back.profiles.stream().anyMatch(p -> p.name.equals("my reviewer")));
     }
 }

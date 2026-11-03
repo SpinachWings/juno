@@ -21,7 +21,7 @@ public final class JunoHome {
     public Path skillsDir() { return root.resolve("skills"); }
     public Path bundledSkillsDir() { return skillsDir().resolve("bundled"); }
     public Path librarySkillsDir() { return skillsDir().resolve("library"); }
-    /** Where the Claude hook script appends events (read by Milestone 2). */
+    /** Where the Claude hook script appends events (read by the runtime). */
     public Path hookEventsDir() { return root.resolve("hook-events"); }
     public Path hookScriptsDir() { return root.resolve("hooks"); }
     public Path agentsDir() { return root.resolve("agents"); }

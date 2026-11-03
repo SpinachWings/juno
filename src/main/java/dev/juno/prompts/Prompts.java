@@ -9,7 +9,7 @@ import java.util.Map;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-/** Loads the built-in prompt templates (docs/prompts, on the classpath) and renders them (docs/prompts/README.md). */
+/** Loads the built-in prompt templates (src/main/resources/dev/juno/prompts) and renders them (see its README.md). */
 public final class Prompts {
     private static final String BASE = "/dev/juno/prompts/";
     private static final Pattern SECTION = Pattern.compile("\\{\\{([#^])(\\w+)}}(.*?)\\{\\{/\\2}}", Pattern.DOTALL);

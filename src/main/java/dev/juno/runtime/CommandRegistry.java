@@ -4,8 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The single registry of slash commands (design §8). Settings → Commands and, later, autocomplete and /help read it.
- * Later milestones add behaviour; the list itself stays here.
+ * The single registry of slash commands (design §8). Settings → Commands, autocomplete and /help read it.
  */
 public final class CommandRegistry {
     public enum Scope {
@@ -75,9 +74,4 @@ public final class CommandRegistry {
         return COMMANDS.stream().filter(c -> c.scope() == scope).toList();
     }
 
-    /** Later milestones register further commands here. */
-    public static void register(Command command) {
-        COMMANDS.removeIf(c -> c.name().equals(command.name()));
-        COMMANDS.add(command);
-    }
 }

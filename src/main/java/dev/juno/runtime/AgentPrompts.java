@@ -18,7 +18,7 @@ import java.util.Map;
 public final class AgentPrompts {
     private AgentPrompts() {}
 
-    /** Placeholders shared by system prompts and profile command templates (docs/prompts/README.md). */
+    /** Placeholders shared by system prompts and profile command templates (prompts/README.md). */
     static Map<String, Object> profileValues(Settings s, Agent a, Project project) {
         Map<String, Object> v = new HashMap<>();
         v.put("agent_name", a.name);
@@ -86,6 +86,11 @@ public final class AgentPrompts {
 
     public static String result(String file, String key, Map<String, ?> values) {
         return Prompts.render(Prompts.sections(Prompts.load("results/" + file + ".md")).get(key), values);
+    }
+
+    /** The refusal for a call from an agent that has been deleted meanwhile. */
+    public static String agentGone() {
+        return result("common", "call-failed", Map.of("reason", "this agent no longer exists"));
     }
 
     /** The resume recap (design §12), built from the journal. */

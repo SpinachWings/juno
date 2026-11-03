@@ -82,10 +82,6 @@ final class StyledDoc {
         return this;
     }
 
-    List<String> currentLineStyles() {
-        return currentLine;
-    }
-
     /** Appends another document, shifting its offsets. */
     void append(StyledDoc other) {
         int base = text.length();

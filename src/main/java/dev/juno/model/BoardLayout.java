@@ -16,7 +16,7 @@ import java.util.Set;
  * where it was, so showing it puts it back.
  */
 public final class BoardLayout {
-    /** Juno's pane: always in the tree (Milestone 4 fills it). */
+    /** Juno's pane: always in the tree. */
     public static final String JUNO = "juno";
 
     public abstract static sealed class Node permits Leaf, Split {}
@@ -73,10 +73,6 @@ public final class BoardLayout {
 
     public boolean isHidden(String id) {
         return hidden.containsKey(id);
-    }
-
-    public Set<String> hiddenIds() {
-        return Set.copyOf(hidden.keySet());
     }
 
     /** Splits {@code target}'s pane: the new pane goes to its right (side by side) or below. */

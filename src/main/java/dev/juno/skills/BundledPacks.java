@@ -12,10 +12,6 @@ public final class BundledPacks {
 
     private BundledPacks() {}
 
-    public static boolean isBundledId(String id) {
-        return ALL.stream().anyMatch(b -> b.id().equals(id));
-    }
-
     /**
      * The locked skills of a bundled pack for a built-in profile, or empty if the pack isn't locked-assigned to it.
      * coder: every skill, including {@code using-git-worktrees} (Juno makes no worktrees; the coder does, design §7.8).

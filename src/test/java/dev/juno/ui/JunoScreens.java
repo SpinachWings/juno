@@ -30,7 +30,7 @@ import javafx.stage.Stage;
 import javax.imageio.ImageIO;
 
 /**
- * Not a unit test: drives the real window for Milestone 4 against a scratch Juno home, writing a screenshot after each
+ * Not a unit test: drives the real window against a scratch Juno home, writing a screenshot after each
  * step. Usage: {@code java -cp ... dev.juno.ui.JunoScreens <scratch dir> <output dir> <scenario>}. Scenarios:
  * {@code ui} (no CLI: Juno's cards, the inbox, can-talk-to, /status, /getcontextfrom, settings) and {@code live}
  * (Juno and two agents on haiku / low: an unnamed task approved and reported, a fresh start, a refused unlinked

@@ -28,7 +28,7 @@ import javafx.stage.Stage;
 import javax.imageio.ImageIO;
 
 /**
- * Not a unit test: drives the real window (no Claude Code needed) to look at what Milestone 6b changed: the PRs tab, an
+ * Not a unit test: drives the real window (no Claude Code needed) to look at: the PRs tab, an
  * agent whose profile was removed, no worktree wording, and the tooltips on shortened text. Prints what it checked.
  * Usage: {@code java -cp ... dev.juno.ui.ChangeScreens <scratch dir> <output dir>}.
  */

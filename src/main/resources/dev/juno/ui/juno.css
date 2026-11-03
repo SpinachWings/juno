@@ -219,7 +219,7 @@
 .output .text.notice-warn { -fx-fill: -juno-warn; }
 .output .text.notice-bad { -fx-fill: -juno-bad; }
 
-/* ===== Board, agent list, inbox, options (Milestone 3) ===== */
+/* ===== Board, agent list, inbox, options ===== */
 .board { -fx-background-color: -juno-bg; }
 .board-scroll, .board-scroll > .viewport { -fx-background-color: -juno-bg; -fx-background: -juno-bg; }
 .board-maximised { -fx-padding: 3; -fx-background-color: -juno-bg; }
@@ -238,7 +238,7 @@
 .button.inbox-busy { -fx-border-color: -juno-warn; -fx-text-fill: -juno-warn; }
 .cards-scroll, .cards-scroll > .viewport { -fx-background-color: transparent; -fx-background: transparent; -fx-padding: 0; }
 
-/* ===== Notepad (Milestone 6) ===== */
+/* ===== Notepad ===== */
 .notes-view { -fx-background-color: -juno-bg; }
 .notes-bar { -fx-background-color: -juno-panel; -fx-border-color: -juno-line; -fx-border-width: 0 0 1 0; }
 .notes-tree, .notes-tree .tree-cell { -fx-background-color: -juno-panel; -fx-background: -juno-panel; }

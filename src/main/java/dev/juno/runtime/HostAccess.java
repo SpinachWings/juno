@@ -268,7 +268,7 @@ public final class HostAccess {
     /** {@code tools/call}: forwarded as it is, with the marker on replies; Claude Code's own rules decided whether to ask you. */
     ObjectNode call(String agentId, String server, String tool, JsonNode args) {
         LiveAgent l = rt.live(agentId);
-        if (l == null) return refused(AgentPrompts.result("common", "call-failed", Map.of("reason", "this agent no longer exists")));
+        if (l == null) return refused(AgentPrompts.agentGone());
         Agent a = l.agent;
         Upstream u = upstream(l, server);
         if (u == null) {

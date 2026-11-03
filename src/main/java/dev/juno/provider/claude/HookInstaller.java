@@ -21,7 +21,7 @@ import java.util.List;
  *
  * <p>The hook is a tiny shell script that appends Claude's hook JSON to {@code <JUNO_HOME>/hook-events/<agent>.jsonl}
  * and does nothing unless {@code JUNO_AGENT_ID} is set. It never fails or blocks, and works with Juno closed.
- * Milestone 2 reads the event files. Installing merges only Juno's own entries, is idempotent, and takes a
+ * Juno reads the event files. Installing merges only Juno's own entries, is idempotent, and takes a
  * timestamped backup before every change.
  */
 public final class HookInstaller {

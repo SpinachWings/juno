@@ -12,8 +12,8 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.BiConsumer;
 
 /**
- * Tails {@code ~/.juno/hook-events/<agent>.jsonl}, written by the Claude hook (docs/progress.md, Milestone 1
- * decision 2). Polls once a second; each file is reset when its agent's process starts.
+ * Tails {@code ~/.juno/hook-events/<agent>.jsonl}, written by the Claude hook.
+ * Polls once a second; each file is reset when its agent's process starts.
  */
 final class HookEvents {
     private final Path dir;

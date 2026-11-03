@@ -15,7 +15,7 @@ import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-/** Lines shaped like Claude Code 2.1.314's stream-json output (recorded during Milestone 2, trimmed). */
+/** Lines shaped like Claude Code 2.1.314's stream-json output (recorded from a real run, trimmed). */
 class ClaudeStreamParserTest {
     @TempDir Path dir;
 

@@ -107,7 +107,7 @@ public final class Orchestration {
     Reply call(String agentId, String tool, JsonNode args) {
         synchronized (rt) {
             LiveAgent l = rt.live(agentId);
-            if (l == null) return Reply.refused(result("common", "call-failed", Map.of("reason", "this agent no longer exists")));
+            if (l == null) return Reply.refused(AgentPrompts.agentGone());
             Agent me = l.agent;
             return switch (tool) {
                 case "list_agents" -> Reply.ok(listAgents(me));
@@ -320,7 +320,7 @@ public final class Orchestration {
         rt.send(j, text, "report");
     }
 
-    // ---------------------------------------------------------------- hand_over (design §4.5)
+    // ---------------------------------------------------------------- hand_over (design §4.4)
 
     /** A coder gives its work to a linked coder that is idle: the same message route and loop guard as send_message. */
     private Reply handOver(Agent me, String to, String task) {

@@ -111,7 +111,7 @@ public class Agent {
         public boolean byUser;
     }
 
-    /** An earlier conversation (design §7.9; the list UI comes in Milestone 3). */
+    /** An earlier conversation (design §7.9). */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public static class Conversation {
         public String id;
