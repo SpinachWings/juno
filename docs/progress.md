@@ -2,7 +2,7 @@
 
 ## Milestone 6c: thin host proxy, no `read_api`. Done (2026-11-03)
 
-- **Proxy shrunk** (`comms.HostActions`, `runtime.HostAccess`): it holds the token, marks replies and notes opened PRs/MRs;
+- **Proxy shrunk** (this supersedes the "refused by the proxy" wording in Milestone 5 and 6b below) (`comms.HostActions`, `runtime.HostAccess`): it holds the token, marks replies and notes opened PRs/MRs;
   it no longer classifies, refuses or filters tools. Profiles keep `host:read` / `host:open` / `host:reply` (and
   `host:*`) as shorthands that Juno expands into Claude Code's own `mcp__github__<tool>` / `mcp__gitlab__<tool>` rules at
   launch (allowed and disallowed). The old blanket "allow the whole server" is gone, so a tool outside the shorthands
@@ -50,8 +50,9 @@ are history.
   `send_message`.
 - **Coordination data:** the preamble's contacts list and `list_agents` show each agent's status, project and branch.
 - **Git state in the system prompt:** the branch checked out (or "not a git repository") when the process starts.
-- **Host proxy**: only read, open and reply exist (`HostActions`); reading includes issues (`issue_read` etc.), so the
-  planner got `host:read` (it needs a key on its agent like any agent that uses the host).
+- **Host access**: three shorthands, `host:read`, `host:open`, `host:reply` (`HostActions`; Milestone 6c changed *how* they
+  are enforced); reading includes issues (`issue_read` etc.), so the planner got `host:read` (it needs a key on its
+  agent like any agent that uses the host).
 - **PRs tab** (`ui.prs.PrsView`, `store.PrStore`, `model.PullRequestEntry`, `~/.juno/prs.json`): opening a PR/MR through the
   proxy adds an entry (repo, number, title, branch, link, agent); Open / Copy link / Close; closing never touches the host.
 - **Agents whose profile is gone** wait at **Awaiting decision ⚙** with a profile picker in the pane (`Reason.PROFILE`,

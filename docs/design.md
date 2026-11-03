@@ -130,7 +130,7 @@ without a message from you, and both agents and you are told why. A message from
 | Host | Token type | Permissions |
 | --- | --- | --- |
 | GitHub | **Fine-grained PAT** (resource owner = the repository's owner; select the repositories) or a classic PAT with `repo` | Repository permissions: **Metadata** read; **Contents** read & write; **Pull requests** read & write (enough to open PRs and reply to threads); **Issues** read (so agents can read issues you paste). An organisation may need to approve the token. |
-| GitLab | **Two tokens** (see below) | **MCP:** a *fine-grained* personal access token with the **MCP tool** resource and **Execute** permission. Legacy PATs, project and group tokens are rejected by the MCP server. **Git and REST:** a normal personal access token (or project/group token) with `read_repository` and `write_repository` only; no API scope. |
+| GitLab | **Two tokens** (see below) | **MCP:** a *fine-grained* personal access token with the **MCP tool** resource and **Execute** permission. Legacy PATs, project and group tokens are rejected by the MCP server. **Git:** a normal personal access token (or project/group token) with `read_repository` and `write_repository` only; no API scope. |
 
 - A **GitLab key holds two tokens**: the MCP token above, and the git token (git over HTTPS and the Test button). Both are stored like any token (vault or `env:VARIABLE`). A GitHub key
   has one token for everything.
@@ -149,7 +149,7 @@ Keys are set **only on agents** — not on profiles or projects: each agent can 
 chosen when you create it (§7.10) and changeable in its options menu. The key for the host of the repository being
 worked on is used for **everything** the agent does on GitHub/GitLab:
 - **MCP tools** — its temporary `mcp.json` points at **Juno's host MCP proxy** (§6.3), which forwards to the host's
-  MCP server with that key's token (the agent never holds the token);
+  MCP server with that key's token (the agent never holds the token; the proxy decides nothing else, §6.3);
 - **git over the network** (fetch/pull/push) — for that process only, via a per-process credential helper (never
   written into git config or remote URLs); SSH remotes are used over HTTPS so the token applies;
 - **commits** — the key's git identity, if set, is the author and committer (through the process's environment; nothing is written into your repository's git config).
