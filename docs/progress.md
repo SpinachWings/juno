@@ -1,5 +1,15 @@
 # Progress
 
+## Milestone 7: hardening. Partly done (2026-11-03)
+
+- Spec compared with code by spot checks (commands, tabs, version check, hook, launch flags, timers, log rotation): no
+  differences found. Fixed: first-run keys step now shows the required token permissions; the GitHub Test line for the
+  pull-request write probe is named "Open PRs and reply to threads (Pull requests: write)".
+- **README.md** written. Sections below Milestone 7 that describe reviews, worktrees and `get_agent_output` are history
+  (Milestone 6b removed them); Milestone 6's test count (171) was a miscount, 137 is right.
+- `/code-review high` covered only the Milestone 7 diff, not the whole branch. Not done: the live manual pass (scratch home, haiku agents, sandbox repositories).
+
+
 ## Milestone 6c: thin host proxy, no `read_api`. Done (2026-11-03)
 
 - **Proxy shrunk** (this supersedes the "refused by the proxy" wording in Milestone 5 and 6b below) (`comms.HostActions`, `runtime.HostAccess`): it holds the token, marks replies and notes opened PRs/MRs;
@@ -100,7 +110,6 @@ are history.
 ### Known issues
 - Two coders in one folder rely on the prompt and on messages; nothing stops one from switching the other's branch.
 - The ⚙ glyph is used for "profile" because the 🧩 glyph is missing from the monospace font.
-- The Test button's write check still names "Comment and open PRs" for a review-write permission probe.
 
 ### For the next milestone (7)
 - Read `docs/design.md` against this (it was rewritten for 6b); `docs/build-prompts.md` Milestones 3–5 are history.
@@ -134,7 +143,7 @@ are history.
   (`AgentPane.setEmbedded`). Leaving the notes, choosing another agent or deleting the agent gives it back.
 - **Remembered** in `~/.juno/notes.json` (`store.NotesState`): open tabs and the active one (dropped if the notes folder
   changed), the view mode and the agent beside the notes.
-- **Unit tests** (171 in all, `mvn verify`): `NotesTest` (tree, create / rename / move / delete, name rules, escaping the
+- **Unit tests** (history; 137 tests now): `NotesTest` (tree, create / rename / move / delete, name rules, escaping the
   folder, refusing a non-UTF-8 file, no temp files left, both overlap checks incl. a shared name prefix).
 
 ### Checked live (no Claude Code needed) with `dev.juno.ui.NotesScreens` (test sources), scratch `JUNO_HOME`, scratch notes folder
@@ -269,7 +278,6 @@ the disk left alone; the overlap message.
 - On haiku `/checkforcomments` and the reviewer's output are looser than the prompts ask (no `file:line` list, Done rather than
   ❓ after the list); nothing was posted early. Worth another look on the profiles' real models.
 - `start_review` reports `not-found` when given a name with typos; it can't suggest one.
-- The first-run setup still doesn't show the token permissions (from Milestone 5a; for Milestone 7).
 - If `claude` isn't on PATH (seen in your PowerShell), agents fail unless Settings → Claude Code path has the full path.
 
 ### For the next milestone (6)

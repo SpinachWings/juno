@@ -156,7 +156,7 @@ class HostLogicTest {
             HostApi.TestLine push = lines.stream().filter(l -> l.what().startsWith("Push")).findFirst().orElseThrow();
             assertFalse(push.ok());
             assertTrue(push.detail().contains("contents=write"), push.detail());
-            HostApi.TestLine comment = lines.stream().filter(l -> l.what().startsWith("Comment")).findFirst().orElseThrow();
+            HostApi.TestLine comment = lines.stream().filter(l -> l.what().startsWith("Open PRs")).findFirst().orElseThrow();
             assertTrue(comment.ok(), "a 404 means the write was allowed; nothing was there to write to");
             assertTrue(lines.stream().anyMatch(l -> l.what().startsWith("Read issues") && Boolean.TRUE.equals(l.ok())));
             assertTrue(lines.stream().noneMatch(l -> l.detail().contains("secret")));

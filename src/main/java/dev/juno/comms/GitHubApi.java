@@ -60,7 +60,7 @@ public final class GitHubApi implements HostApi {
         // Write checks that can't succeed: a refusal is about permission (403), anything else means the write was allowed.
         out.add(write("Push (Contents: write)", "/repos/" + repo + "/git/refs",
                 "{\"ref\":\"refs/heads/juno-test-does-not-exist\",\"sha\":\"0000000000000000000000000000000000000000\"}"));
-        out.add(write("Comment and open PRs (Pull requests: write)", "/repos/" + repo + "/pulls/0/reviews",
+        out.add(write("Open PRs and reply to threads (Pull requests: write)", "/repos/" + repo + "/pulls/0/reviews",
                 "{\"event\":\"COMMENT\",\"body\":\"juno test\"}"));
         return out;
     }

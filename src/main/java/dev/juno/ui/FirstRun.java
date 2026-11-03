@@ -1,7 +1,9 @@
 package dev.juno.ui;
 
 import dev.juno.app.AppContext;
+import dev.juno.model.Key;
 import dev.juno.model.Project;
+import dev.juno.model.TokenPermissions;
 import dev.juno.model.Validation;
 import dev.juno.provider.Provider;
 import dev.juno.store.SettingsStore;
@@ -235,6 +237,14 @@ public final class FirstRun {
                         + "accounts' keys per host now, then pick them when you create agents. Tokens are kept in your "
                         + "OS keyring, never in a file."),
                 Ui.button("Open Keys settings…", () -> SettingsWindow.show(ctx, stage, SettingsWindow.Page.KEYS)),
+                Ui.dim("Required token permissions
+
+GitHub
+" + TokenPermissions.forKind(Key.Kind.GITHUB)
+                        + "
+
+GitLab
+" + TokenPermissions.forKind(Key.Kind.GITLAB)),
                 Ui.dim("Creating an agent for a project whose host has no key shows a warning in its setup form."));
     }
 }
