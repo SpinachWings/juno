@@ -28,9 +28,9 @@ public final class KeysTab extends BorderPane {
     private final Label storedNote = Ui.dim("");
     private final CheckBox useEnv = new CheckBox("Use an environment variable instead");
     private final TextField envName = new TextField();
-    private final Label gitTokenLabel = new Label("Git and REST token");
+    private final Label gitTokenLabel = new Label("Git token");
     private final PasswordField gitToken = new PasswordField();
-    private final Label gitEnvLabel = new Label("Git and REST variable");
+    private final Label gitEnvLabel = new Label("Git variable");
     private final TextField gitEnvName = new TextField();
     private final Label gitStoredNote = Ui.dim("");
     private final TextField testRepo = new TextField();
@@ -127,7 +127,7 @@ public final class KeysTab extends BorderPane {
         testResult.setWrapText(true);
         g.add(testResult, 1, r++);
         testRepo.setPromptText("owner/repo, to check its permissions (nothing is posted or changed)");
-        gitToken.setPromptText("GitLab's MCP server takes only the token above; this one is for git and REST");
+        gitToken.setPromptText("GitLab's MCP server takes only the token above; this one is for git");
         gitEnvName.setPromptText("e.g. GITLAB_GIT_TOKEN");
         host.setPromptText("github.com");
         envName.setPromptText("e.g. GITHUB_TOKEN");

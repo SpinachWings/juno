@@ -4,7 +4,7 @@ import java.util.List;
 
 /**
  * The tools a profile can allow or disallow, for the tools reference in Settings → Agent profiles (design §5.4).
- * The host (GitHub / GitLab) entries are per action, because Juno's proxy decides by action (design §6.3).
+ * The host (GitHub / GitLab) entries are shorthands for the host's tools, which Juno expands into Claude Code's own rules (design §6.3).
  */
 public final class ToolCatalog {
     public enum Group {
@@ -50,9 +50,10 @@ public final class ToolCatalog {
             new Tool("mcp__juno__assign_task", Group.JUNO, "Orchestrator only. Hand an agent a task."),
             new Tool("mcp__juno__hand_over", Group.JUNO, "Give work to a linked agent that edits files and is idle."),
             new Tool("mcp__juno__set_link", Group.JUNO, "Orchestrator only. Open or close a link between agents."),
-            new Tool("host:read", Group.HOST, "Read PRs/MRs, diffs, files, commits, review threads and issues."),
-            new Tool("host:open", Group.HOST, "Open a PR/MR."),
-            new Tool("host:reply", Group.HOST, "Reply to a review thread."));
+            new Tool("host:read", Group.HOST, "Run the host's read tools without asking: PRs/MRs, diffs, files, commits, review threads, issues."),
+            new Tool("host:open", Group.HOST, "Open a PR/MR without asking."),
+            new Tool("host:reply", Group.HOST, "Reply to a review thread without asking (replies carry the 🤖 marker)."),
+            new Tool("host:*", Group.HOST, "Every tool of the host's server, merge and close included, without asking."));
 
     private ToolCatalog() {}
 
@@ -64,7 +65,8 @@ public final class ToolCatalog {
     public static String syntaxHelp() {
         return "Rules go one per line. A bare name (Read) allows that tool. Bash(prefix:*) matches shell commands "
                 + "starting with the prefix. mcp__<server>__<tool> names a tool of an MCP server. Disallowed rules "
-                + "always win over allowed ones. host:<action> rules say what the agent may do on GitHub / GitLab "
-                + "through Juno; host:* allows every action. Without one the agent gets no GitHub / GitLab tools.";
+                + "always win over allowed ones. host:<action> rules give the agent the GitHub / GitLab tools "
+                + "and let it run those actions without asking; Claude Code asks you about every other tool of the host. "
+                + "Without one the agent gets no GitHub / GitLab tools.";
     }
 }

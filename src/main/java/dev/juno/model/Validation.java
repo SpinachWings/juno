@@ -67,7 +67,7 @@ public final class Validation {
         if (envName != null && !envName.isBlank() && !ENV_NAME.matcher(envName.trim()).matches())
             errors.add("Environment variable names use letters, digits and underscores.");
         boolean has = tokenGiven || (envName != null && !envName.isBlank()) || (k.gitToken != null && !k.gitToken.isBlank());
-        if (!has) errors.add("A GitLab key needs a git and REST token too (or the name of a variable that holds it).");
+        if (!has) errors.add("A GitLab key needs a git token too (or the name of a variable that holds it).");
         return errors;
     }
 

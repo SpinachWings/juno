@@ -8,6 +8,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.sun.net.httpserver.HttpServer;
 import dev.juno.comms.HostActions.Action;
+import dev.juno.git.GitAccess;
 import dev.juno.model.Agent;
 import dev.juno.model.Key;
 import dev.juno.model.PullRequestEntry;
@@ -20,91 +21,54 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 
-/** What the proxy lets through (design §6.6), the PRs tab's entries (§7.11) and the key Test's REST answers (§5.1). */
+/** The host shorthands and the thin proxy (design §6.3), the PRs tab's entries (§7.11) and the key Test (§5.1). */
 class HostLogicTest {
     private static JsonNode json(String s) throws IOException {
         return Json.MAPPER.readTree(s);
     }
 
-    private static Action github(String tool, String args) throws IOException {
-        return HostActions.classify(Key.Kind.GITHUB, tool, json(args));
-    }
-
-    private static Action gitlab(String tool, String args) throws IOException {
-        return HostActions.classify(Key.Kind.GITLAB, tool, json(args));
+    @Test
+    void hostRulesBecomeClaudeCodesOwnRulesForTheHostsTools() {
+        List<String> rules = List.of("Read", "host:read", "host:reply");
+        List<String> gh = HostActions.expand("github", Key.Kind.GITHUB, rules);
+        assertTrue(gh.contains("mcp__github__issue_read"));
+        assertTrue(gh.contains("mcp__github__pull_request_read"));
+        assertTrue(gh.contains("mcp__github__add_reply_to_pull_request_comment"));
+        assertFalse(gh.contains("mcp__github__create_pull_request"), "not opened without host:open");
+        assertTrue(gh.stream().noneMatch(r -> r.contains("merge") || r.contains("update_pull_request")));
+        List<String> gl = HostActions.expand("gitlab", Key.Kind.GITLAB, List.of("host:open", "host:read"));
+        assertTrue(gl.contains("mcp__gitlab__create_merge_request"));
+        assertTrue(gl.contains("mcp__gitlab__get_issue"));
+        assertEquals(List.of("mcp__github"), HostActions.expand("github", Key.Kind.GITHUB, List.of(HostActions.ANY)));
+        assertTrue(HostActions.expand("github", Key.Kind.GITHUB, List.of("Read", "host:merge")).isEmpty(), "unknown host rules do nothing");
     }
 
     @Test
-    void githubReadsOpensAndRepliesOnly() throws Exception {
-        assertEquals(Action.READ, github("pull_request_read", "{\"method\":\"get_diff\"}"));
-        assertEquals(Action.READ, github("issue_read", "{\"method\":\"get\"}"));
-        assertEquals(Action.READ, github("list_issues", "{}"));
-        assertEquals(Action.READ, github("get_file_contents", "{}"));
-        assertEquals(Action.OPEN, github("create_pull_request", "{}"));
-        assertEquals(Action.REPLY, github("add_reply_to_pull_request_comment", "{}"));
-    }
-
-    @Test
-    void everythingElseIsRefusedWhateverTheProfileSays() throws Exception {
-        assertNull(github("merge_pull_request", "{}"));
-        assertNull(github("update_pull_request", "{\"state\":\"closed\"}"));
-        assertNull(github("update_pull_request", "{\"title\":\"x\"}"));
-        assertNull(github("pull_request_review_write", "{\"method\":\"create\",\"event\":\"APPROVE\"}"));
-        assertNull(github("pull_request_review_write", "{\"method\":\"resolve_thread\",\"threadId\":\"x\"}"));
-        assertNull(github("add_comment_to_pending_review", "{}"));
-        assertNull(github("add_issue_comment", "{}"));
-        assertNull(github("create_branch", "{}"));
-        assertNull(github("push_files", "{}"));
-        assertNull(github("some_new_tool", "{}"));
-        assertNull(gitlab("accept_merge_request", "{}"));
-        assertNull(gitlab("save_merge_request", "{\"merge_request_iid\":3,\"state_event\":\"close\"}"));
-        assertNull(gitlab("save_merge_request", "{\"merge_request_iid\":3,\"title\":\"x\"}"));
-        assertNull(gitlab("save_note", "{}"));
-        assertNull(gitlab("save_merge_request_review", "{\"method\":\"approve\"}"));
-        assertNull(gitlab("save_merge_request_review", "{\"method\":\"resolve_discussion\"}"));
-        assertNull(gitlab("create_workflow", "{}"));
-    }
-
-    @Test
-    void gitlabReadsOpensAndRepliesOnly() throws Exception {
-        assertEquals(Action.READ, gitlab("get_merge_request", "{\"include\":\"diffs\"}"));
-        assertEquals(Action.READ, gitlab("get_issue", "{}"));
-        assertEquals(Action.OPEN, gitlab("save_merge_request", "{\"title\":\"x\"}"));
-        assertEquals(Action.OPEN, gitlab("create_merge_request", "{}"));
-        assertEquals(Action.REPLY, gitlab("save_note", "{\"discussion_id\":\"d\"}"));
-        assertEquals(Action.REPLY, gitlab("save_merge_request_review", "{\"method\":\"reply_discussion\"}"));
-    }
-
-    @Test
-    void onlyToolsThatCanDoAllowedThingsAreListed() {
-        List<String> readOnly = List.of("host:read");
-        assertTrue(HostActions.listable(Key.Kind.GITHUB, "issue_read", readOnly, List.of()));
-        assertFalse(HostActions.listable(Key.Kind.GITHUB, "create_pull_request", readOnly, List.of()));
-        assertFalse(HostActions.listable(Key.Kind.GITHUB, "merge_pull_request", List.of(HostActions.ANY), List.of()));
-        assertTrue(HostActions.listable(Key.Kind.GITLAB, "save_merge_request", List.of("host:open"), List.of()));
-        assertFalse(HostActions.listable(Key.Kind.GITHUB, "pull_request_review_write", List.of(HostActions.ANY), List.of()));
-    }
-
-    @Test
-    void disallowedRulesWinAndNoRuleMeansNo() {
-        List<String> allowed = List.of("host:read", "host:reply");
-        assertTrue(HostActions.allowed(Action.READ, allowed, List.of()));
-        assertFalse(HostActions.allowed(Action.READ, allowed, List.of("host:read")));
-        assertFalse(HostActions.allowed(Action.OPEN, allowed, List.of()));
-        assertTrue(HostActions.allowed(Action.OPEN, List.of(HostActions.ANY), List.of()));
-        assertFalse(HostActions.allowed(Action.OPEN, List.of(HostActions.ANY), List.of("host:open")));
-        assertFalse(HostActions.anyAllowed(List.of("Read")));
+    void aProfileGetsTheHostServersOnlyWithAHostRule() {
+        assertTrue(HostActions.anyAllowed(List.of("Read", "host:read")));
+        assertFalse(HostActions.anyAllowed(List.of("Read", "mcp__juno__report")));
+        assertTrue(HostActions.isRule("host:open"));
         assertEquals("host:reply", Action.REPLY.rule());
     }
 
     @Test
-    void onlyRepliesCarryTheMarker() {
-        assertEquals("body", HostActions.commentField(Key.Kind.GITHUB, "add_reply_to_pull_request_comment", Action.REPLY));
-        assertEquals("note", HostActions.commentField(Key.Kind.GITLAB, "save_merge_request_review", Action.REPLY));
-        assertEquals("body", HostActions.commentField(Key.Kind.GITLAB, "save_note", Action.REPLY));
-        assertNull(HostActions.commentField(Key.Kind.GITHUB, "create_pull_request", Action.OPEN));
-        assertEquals("base", HostActions.baseField(Key.Kind.GITHUB));
-        assertEquals("target_branch", HostActions.baseField(Key.Kind.GITLAB));
+    void openingAPrOrMrIsRecognisedForThePrsTab() throws Exception {
+        assertTrue(HostActions.isOpen(Key.Kind.GITHUB, "create_pull_request", json("{}")));
+        assertFalse(HostActions.isOpen(Key.Kind.GITHUB, "update_pull_request", json("{}")));
+        assertTrue(HostActions.isOpen(Key.Kind.GITLAB, "create_merge_request", json("{}")));
+        assertTrue(HostActions.isOpen(Key.Kind.GITLAB, "save_merge_request", json("{\"title\":\"x\"}")));
+        assertFalse(HostActions.isOpen(Key.Kind.GITLAB, "save_merge_request", json("{\"merge_request_iid\":3}")));
+        assertFalse(HostActions.isOpen(Key.Kind.GITHUB, "pull_request_read", json("{}")));
+    }
+
+    @Test
+    void onlyRepliesCarryTheMarker() throws Exception {
+        assertEquals("body", HostActions.commentField(Key.Kind.GITHUB, "add_reply_to_pull_request_comment", json("{}")));
+        assertEquals("body", HostActions.commentField(Key.Kind.GITLAB, "save_note", json("{}")));
+        assertEquals("note", HostActions.commentField(Key.Kind.GITLAB, "save_merge_request_review",
+                json("{\"method\":\"reply_discussion\"}")));
+        assertNull(HostActions.commentField(Key.Kind.GITLAB, "save_merge_request_review", json("{\"method\":\"approve\"}")));
+        assertNull(HostActions.commentField(Key.Kind.GITHUB, "create_pull_request", json("{}")));
     }
 
     // ---------------------------------------------------------------- the PRs tab's entries
@@ -154,7 +118,7 @@ class HostLogicTest {
         assertEquals("b", e.branch);
     }
 
-    // ---------------------------------------------------------------- the key Test (REST)
+    // ---------------------------------------------------------------- the key Test
 
     private static HttpServer server(Map<String, String> answers, Map<String, Integer> statuses) throws IOException {
         HttpServer http = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -177,7 +141,7 @@ class HostLogicTest {
     }
 
     @Test
-    void theTestNamesWhatsMissing() throws Exception {
+    void theGithubTestNamesWhatsMissing() throws Exception {
         Map<String, String> a = new HashMap<>();
         a.put("/user", "{\"login\":\"me\"}");
         a.put("/repos/o/r", "{\"private\":true,\"default_branch\":\"main\"}");
@@ -202,7 +166,7 @@ class HostLogicTest {
     }
 
     @Test
-    void aBadTokenStopsTheTest() throws Exception {
+    void aBadGithubTokenStopsTheTest() throws Exception {
         HttpServer h = server(Map.of("/user", "{\"message\":\"Bad credentials\"}"), Map.of("/user", 401));
         try {
             List<HostApi.TestLine> lines = new GitHubApi(base(h), "t").test("o/r");
@@ -211,5 +175,20 @@ class HostLogicTest {
         } finally {
             h.stop(0);
         }
+    }
+
+    @Test
+    void theGitlabTestUsesGitOnlyAndNeverLeaksTheToken() {
+        List<HostApi.TestLine> none = new GitLabApi("gitlab.example.invalid", "glpat-secret").test("");
+        assertEquals(1, none.size());
+        assertNull(none.get(0).ok(), "no project named: nothing to check");
+        // An unreachable host: the read check fails, and the token is in no line.
+        List<HostApi.TestLine> lines = new GitLabApi("127.0.0.1:1", "glpat-secret").test("g/p");
+        assertEquals(Boolean.FALSE, lines.get(0).ok());
+        assertTrue(lines.stream().noneMatch(l -> l.detail().contains("glpat-secret")));
+        Map<String, String> env = GitAccess.forToken("gitlab.com", true, "glpat-secret");
+        assertEquals("https", env.get("GIT_ALLOW_PROTOCOL"));
+        assertTrue(env.get("GIT_CONFIG_VALUE_1").startsWith("Authorization: Basic "));
+        assertFalse(env.get("GIT_CONFIG_VALUE_1").contains("glpat-secret"), "only base64 of user:token, in the child's environment");
     }
 }

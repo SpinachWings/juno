@@ -36,6 +36,16 @@ public final class GitAccess {
         return environment(hosts.isEmpty() ? "file" : "file:https", config);
     }
 
+    /** One git command of Juno's own (the key Test): the same rules, the token only in this child's environment. */
+    public static Map<String, String> forToken(String host, boolean gitlab, String token) {
+        List<String[]> config = new ArrayList<>();
+        config.add(new String[] {"credential.helper", ""});
+        String basic = java.util.Base64.getEncoder().encodeToString((username(gitlab) + ":" + token)
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        config.add(new String[] {"http.https://" + host + "/.extraHeader", "Authorization: Basic " + basic});
+        return environment("https", config);
+    }
+
     private static List<String[]> rewrites(String host) {
         String https = "url.https://" + host + "/.insteadOf";
         return List.of(new String[] {https, "git@" + host + ":"}, new String[] {https, "ssh://git@" + host + "/"});

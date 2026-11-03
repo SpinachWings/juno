@@ -122,16 +122,17 @@ without a message from you, and both agents and you are told why. A message from
   a key deletes its vault entry. If no vault is available (e.g. Linux without a keyring daemon, WSL, SSH), the tab
   says so and offers `env:VARIABLE` (Juno stores the variable's name). **Never plain text.**
 - Tokens are never shown in full after saving, logged, or put in prompts; they're read only when an agent starts.
-- **Test** checks the key against the host's MCP server and REST API, and reports which of the permissions below are
-  missing (read the repository, read pull requests and issues, push, comment).
+- **Test** checks the key against the host's MCP server and then the repository you name: on GitHub through its REST
+  API, reporting which of the permissions below are missing (read the repository, read pull requests and issues, push,
+  comment); on GitLab with a `git ls-remote` using the git token (push can't be tried without pushing).
 - **Required token permissions** (shown in the Keys tab next to the token, per kind):
 
 | Host | Token type | Permissions |
 | --- | --- | --- |
 | GitHub | **Fine-grained PAT** (resource owner = the repository's owner; select the repositories) or a classic PAT with `repo` | Repository permissions: **Metadata** read; **Contents** read & write; **Pull requests** read & write (enough to open PRs and reply to threads); **Issues** read (so agents can read issues you paste). An organisation may need to approve the token. |
-| GitLab | **Two tokens** (see below) | **MCP:** a *fine-grained* personal access token with the **MCP tool** resource and **Execute** permission. Legacy PATs, project and group tokens are rejected by the MCP server. **Git and REST:** a normal personal access token (or project/group token) with `api`, `read_repository` and `write_repository`. |
+| GitLab | **Two tokens** (see below) | **MCP:** a *fine-grained* personal access token with the **MCP tool** resource and **Execute** permission. Legacy PATs, project and group tokens are rejected by the MCP server. **Git and REST:** a normal personal access token (or project/group token) with `read_repository` and `write_repository` only; no API scope. |
 
-- A **GitLab key holds two tokens**: the MCP token above, and the git/REST token (git over HTTPS and the Test button). Both are stored like any token (vault or `env:VARIABLE`). A GitHub key
+- A **GitLab key holds two tokens**: the MCP token above, and the git token (git over HTTPS and the Test button). Both are stored like any token (vault or `env:VARIABLE`). A GitHub key
   has one token for everything.
 - The MCP URL comes from the host; **MCP URL override** under Advanced:
 
@@ -227,7 +228,7 @@ the built-in prompts (§11) read-only.
 | Profile | Model / effort | Permission | Needs folder | Edits files | Tools (defaults) |
 | --- | --- | --- | --- | --- | --- |
 | **orchestrator** | Opus 5.5 / high | default | no | no | Juno tools (all), Read, Grep, Glob |
-| **coder** | Sonnet 5.5 / high | acceptEdits | **yes** | **yes** | file tools; `Bash(git:*)` except `git push --force`; project build & test commands; `hand_over`; host MCP (§6.3): read PRs/MRs, threads and issues, open PR/MR, reply. **Disallowed:** `gh`, `glab`. The proxy refuses approve, merge, close, resolve and every other host action |
+| **coder** | Sonnet 5.5 / high | acceptEdits | **yes** | **yes** | file tools; `Bash(git:*)` except `git push --force`; project build & test commands; `hand_over`; host MCP (§6.3): read PRs/MRs, threads and issues, open PR/MR, reply. **Disallowed:** `gh`, `glab`. Any other host tool (approve, merge, close, resolve…) asks you first |
 | **planner** | Opus 5.5 / max | default | no | no | Read, Grep, Glob, WebSearch, WebFetch; superpowers `brainstorming`, `writing-plans`; host MCP: read only (issues, PRs/MRs). **Disallowed:** Edit, Write |
 | **searcher** | Sonnet 5.5 / medium | default | no | no | WebSearch, WebFetch, Read |
 
@@ -237,30 +238,29 @@ another profile for it in its pane or the inbox; its conversation, project and k
 that allowed the removed tools simply loses those rules.
 
 ### 6.3 Host MCP access
-Agents never talk to GitHub's or GitLab's MCP server directly. Their `mcp.json` points at a **proxy in Juno's MCP
-server**, which holds the key's token, forwards only the calls the agent's profile allows, and refuses the rest with a
-clear message. Only three kinds of action exist: **read** (PRs/MRs, diffs, files, commits, review threads, issues),
-**open** a PR/MR and **reply** to a thread; every other tool of the host's server (approve, merge, close, review,
-resolve, edit, create branches…) is unknown to Juno and refused, whatever a profile says. A profile allows them with
-`host:read`, `host:open` and `host:reply` rules.
+Agents never talk to GitHub's or GitLab's MCP server directly. Their `mcp.json` points at a **thin proxy in Juno's MCP
+server**. It does three things and decides nothing: it **holds the key's token** (the agent only ever has Juno's own
+per-process token, so it can't read or reuse the host token), it **puts the 🤖 marker** ("🤖 name (profile):") in front of
+replies, and it **notes each PR/MR that gets opened** for the PRs tab (§7.11). Every other call goes through unchanged.
 
-| Capability | GitHub tool (`api.githubcopilot.com/mcp/`) | GitLab tool (`<host>/api/v4/mcp`, 18.3+; GA in 19.5) |
+**What an agent may do is the host's job and Claude Code's.** A profile lists shorthands: `host:read`, `host:open`,
+`host:reply` (and `host:*` for every tool of the server). When the process starts Juno expands them into Claude Code's
+own rules for that host's tools, so those run without asking, while **every other tool of the host (merge, close,
+approve, resolve, create branches…) makes Claude Code ask you** through the permission prompt (§7.5). A `host:` rule
+in a profile's *disallowed* tools is expanded the same way and blocks them outright. A profile with no host rule gets no
+host server at all. What a key can do at all is limited by its permissions and by the host's own rules (protected
+branches, required reviews): use a bot account that can't merge or push to the default branch.
+
+| Shorthand | GitHub tools (`api.githubcopilot.com/mcp/`) | GitLab tools (`<host>/api/v4/mcp`, 18.3+; GA in 19.5) |
 | --- | --- | --- |
-| Open PR/MR | `create_pull_request` | `save_merge_request` (no `merge_request_iid`) |
-| Read PR/MR, diff, files, commits, threads, mergeability | `pull_request_read` (`get`, `get_diff`, `get_files`, `get_commits`, `get_reviews`, `get_comments`, `get_review_comments`); `get` carries `mergeable` / `mergeable_state` | `get_merge_request` (`include`: diffs, commits, notes, discussions); `has_conflicts`, `detailed_merge_status` |
-| Read an issue and its comments | `issue_read` (`get`, `get_comments`), `list_issues`, `search_issues` | `get_issue` and its notes (names from the documentation) |
-| Reply to a thread | `add_reply_to_pull_request_comment` | `save_note` with `discussion_id`, or `save_merge_request_review` `reply_discussion` |
+| `host:read` | `pull_request_read` (incl. `mergeable` / `mergeable_state`, threads, files, diff), `issue_read`, `list_issues`, `search_issues`, `list_pull_requests`, `search_pull_requests`, `get_file_contents`, `list_commits`, `get_commit`, `list_branches` | `get_merge_request` (incl. `has_conflicts`, `detailed_merge_status`, discussions), `get_issue`, `list_issues`, `list_merge_requests`, `get_project` |
+| `host:open` | `create_pull_request` | `create_merge_request` (`save_merge_request` without `merge_request_iid` also opens one, but it also edits and closes, so it is not in the shorthand and asks) |
+| `host:reply` | `add_reply_to_pull_request_comment` | `save_note` (`save_merge_request_review` `reply_discussion` also replies; it asks) |
 
-**What each profile may do through the proxy:**
-- **coder:** read, open a PR/MR, reply to threads. Replies carry the marker "🤖 name (profile):", added by the proxy
-  when missing, so people can tell an agent's words. Opening a PR/MR adds an entry to the PRs tab (§7.11).
-- **planner:** read only (issues and PRs/MRs), for the issues you paste into its chat.
-- Other profiles: no host MCP access. A user-made profile gets the same three choices in its allowed tools.
-- Juno itself only calls REST for the key's Test button, with the key's (git/REST) token.
-
-The GitHub server needs the `Mcp-Protocol-Version` header and exposes extra toolsets at `/mcp/x/<toolset>`; the proxy
-asks for the default toolset plus `actions` (read-only listings). GitHub's tool names were read from the live server;
-GitLab's come from its documentation and are re-checked at the first GitLab run (§13).
+**By default:** the coder has `host:read`, `host:open` and `host:reply`; the planner has `host:read`; no other profile has
+host access. Tool names for GitHub were read from the live server; GitLab's come from its documentation and are
+re-checked at the first GitLab run (§13). The GitHub server needs the `Mcp-Protocol-Version` header and exposes extra
+toolsets at `/mcp/x/<toolset>`; the proxy asks for the default toolset plus `actions` (read-only listings).
 
 ### 6.1 What each system prompt covers
 - **orchestrator (Juno):** does five things: opens links, closes links, passes on reports from single agents, gives
@@ -307,7 +307,7 @@ Both are built-in profile commands that work on GitHub and GitLab. **Nothing cha
 4. When all are decided: make the changes locally, run the tests, commit, push.
 5. Show the replies; post only after you approve. Skipped comments get no reply.
 
-The coder never resolves threads (the proxy refuses it); people's threads are left for you or them.
+The coder never resolves threads (its prompt forbids it, and resolving isn't among the tools it may run without asking); people's threads are left for you or them.
 
 **`/checkformergeconflicts`**
 1. Find the PR/MR of its branch and ask the host whether it has conflicts (GitHub `mergeable` / `mergeable_state`,
@@ -408,7 +408,7 @@ showing one puts it back where it was. Juno can't be hidden.
 - **Branch choice is the coder's first question** (§6.1): start from a source branch onto a new branch, or work
   directly on an existing one. Without git in the folder the coder says so and stops; Juno never offers `git init`.
 - **Committing to the default branch has no hard guard any more:** it is the coder's prompt (explicit yes needed), your
-  permission rules and the PR flow. The host proxy still refuses merge, approve and close.
+  permission rules and the PR flow. Merge, close and approve are not among the tools it may run without asking, so Claude Code asks you first; for a hard stop use branch protection on the host.
 - **Several agents in one project** share one working tree, so Juno tells them (§6.1): the contacts list and
   `list_agents` show each linked agent's status, project and branch; a coder that needs a different branch from an
   agent working in the folder makes its own git worktree with superpowers' `using-git-worktrees` skill (inside the
@@ -565,7 +565,7 @@ Besides profiles' system prompts, all natural-language text Juno sends lives as 
 **To write (Milestone 0):** the built-in profiles' system prompts (§6.1) and the prompt templates (§11).
 
 **Answered by Milestone 5a** (see §6.3 and `docs/progress.md`): the tools exist on both hosts; some dangerous actions are
-options of tools a profile needs, so Juno filters per action in a proxy (now only read / open / reply are allowed);
+options of tools a profile needs; since the reviewer is gone, Juno no longer filters per action: Claude Code's own rules decide (§6.3);
 GitLab's MCP server takes a fine-grained PAT only, so a GitLab key holds two tokens (§5.1).
 
 **Verified live on GitHub** (Milestone 5a): opening a PR, reply, close, and reads. **Still to verify:** everything on

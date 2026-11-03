@@ -21,7 +21,7 @@ public class Key {
     public String host = Kind.GITHUB.defaultHost;
     /** {@code keyring:juno/key/<id>} or {@code env:VARIABLE}. Never the token. */
     public String token = "";
-    /** GitLab only: the git and REST token, a second reference like {@code token} (design §5.1). */
+    /** GitLab only: the git token, a second reference like {@code token} (design §5.1). */
     public String gitToken = "";
     public String gitName = "";
     public String gitEmail = "";
@@ -34,7 +34,7 @@ public class Key {
         return k;
     }
 
-    /** The reference of the token for git over HTTPS and REST calls: GitHub keys have one token for everything. */
+    /** The reference of the token for git over HTTPS and the Test: GitHub keys have one token for everything. */
     public String gitAndRestToken() {
         return kind == Kind.GITLAB ? gitToken : token;
     }

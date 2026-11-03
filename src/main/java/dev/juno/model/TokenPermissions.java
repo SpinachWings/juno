@@ -26,8 +26,8 @@ public final class TokenPermissions {
             MCP token: a fine-grained personal access token with the MCP tool resource and the Execute permission. \
             Legacy personal, project and group tokens are refused by the MCP server, even with the api scope.
 
-            Git and REST token (git over HTTPS and the Test button): a personal, project or group access token with the \
-            scopes api, read_repository and write_repository.
+            Git token (git over HTTPS and the Test button): a personal, project or group access token with the scopes \
+            read_repository and write_repository. No API scope is needed.
 
             Self-managed GitLab needs 18.3 or later with the MCP server enabled.""";
 }

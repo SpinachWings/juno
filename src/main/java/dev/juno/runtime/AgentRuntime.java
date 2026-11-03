@@ -501,10 +501,10 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
             Path helper = run.resolve("git-credential.sh");
             AtomicFiles.writeString(helper, dev.juno.git.GitAccess.helperScript(mcp.credentialUrl(), l.token));
             Path plugins = provider.writeSkills(run.resolve("plugins"), skillSets(a.profile));
-            // host:<action> rules are Juno's own: the proxy applies them, and the agent sees only what they allow.
+            // host:<action> rules are Juno's shorthand for the host's tools; Claude Code asks about all the others.
             List<String> allowed = new ArrayList<>(p.allowedTools.stream()
                     .filter(r -> !dev.juno.comms.HostActions.isRule(r)).toList());
-            hostServers.keySet().forEach(s -> allowed.add("mcp__" + s));
+            allowed.addAll(host.expand(a, hostServers.keySet(), p.allowedTools));
             Project project = project(a);
             if (p.editsFiles && project != null) {
                 for (String cmd : project.buildAndTestCommands) {
@@ -538,6 +538,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
     List<String> disallowed(Agent a, Profile p) {
         List<String> out = new ArrayList<>(p.disallowedTools.stream()
                 .filter(r -> !dev.juno.comms.HostActions.isRule(r)).toList());
+        out.addAll(host.expand(a, List.of(HostAccess.GITHUB, HostAccess.GITLAB), p.disallowedTools));
         if (host.keys(a).isEmpty()) {
             for (String r : List.of("Bash(gh:*)", "Bash(glab:*)")) if (!out.contains(r)) out.add(r);
         }

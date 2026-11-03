@@ -1,5 +1,22 @@
 # Progress
 
+## Milestone 6c: thin host proxy, no `read_api`. Done (2026-11-03)
+
+- **Proxy shrunk** (`comms.HostActions`, `runtime.HostAccess`): it holds the token, marks replies and notes opened PRs/MRs;
+  it no longer classifies, refuses or filters tools. Profiles keep `host:read` / `host:open` / `host:reply` (and
+  `host:*`) as shorthands that Juno expands into Claude Code's own `mcp__github__<tool>` / `mcp__gitlab__<tool>` rules at
+  launch (allowed and disallowed). The old blanket "allow the whole server" is gone, so a tool outside the shorthands
+  (merge, close, approve…) now **asks you through the permission prompt** instead of being refused by Juno. Removed: the
+  `not-allowed` / `unknown` results, `classify` / `allowed` / `listable`, the per-action refusal lines in the pane.
+- **GitLab git token needs only `read_repository` and `write_repository`** (no `api`, no `read_api`): the Test button's
+  GitLab check is a `git ls-remote` with the token in that one child's environment (`GitAccess.forToken`); push can't be
+  tried without pushing, so it says so. The key form and messages call it "Git token" (it was "Git and REST token").
+  GitHub's Test still uses REST (its fine-grained token carries the permissions it probes).
+- **Tests:** `HostLogicTest` rewritten (expansion, open/marker detection, PRs entries, both Tests); 137 in all.
+- **Consequences to know:** a profile of your own that had `host:review` etc. keeps losing those rules; `host:*` now
+  means every tool without asking, merge included. GitLab's tool names are from documentation, so a name that is wrong
+  means an extra prompt, not an open door. Not run against a real host after this change.
+
 ## Milestone 6b: changes after the notepad. Done (2026-11-03)
 
 A change request between Milestone 6 and 7 (ten items). `docs/design.md`, `docs/prompts/`, `CLAUDE.md` and the tests were

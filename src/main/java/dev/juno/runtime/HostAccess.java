@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.juno.comms.GitHubApi;
 import dev.juno.comms.GitLabApi;
 import dev.juno.comms.HostActions;
-import dev.juno.comms.HostActions.Action;
 import dev.juno.comms.HostApi;
 import dev.juno.comms.McpClient;
 import dev.juno.git.Git;
@@ -152,6 +151,16 @@ public final class HostAccess {
         return out;
     }
 
+    /** Claude Code rules for the host servers an agent has, from the profile's {@code host:} rules (allowed or disallowed). */
+    List<String> expand(Agent a, Iterable<String> servers, List<String> rules) {
+        List<String> out = new ArrayList<>();
+        for (String s : servers) {
+            Key k = key(a, s.equals(GITLAB) ? Key.Kind.GITLAB : Key.Kind.GITHUB);
+            if (k != null) out.addAll(HostActions.expand(s, k.kind, rules));
+        }
+        return out;
+    }
+
     /** The git environment of the agent's process, with the key's author identity when it has one (never in git config). */
     Map<String, String> gitEnvironment(Agent a, Path helper, Project project) {
         List<String> hosts = keys(a).stream().map(k -> k.host).toList();
@@ -184,7 +193,7 @@ public final class HostAccess {
                 .orElse("");
     }
 
-    /** The token for git and REST (for Juno's own calls), if readable. */
+    /** The token for git (and the GitHub Test's REST calls), if readable. */
     Optional<String> restToken(Key k) {
         return tokens.resolve(k.gitAndRestToken());
     }
@@ -192,7 +201,7 @@ public final class HostAccess {
     private HostApi realApi(Key k) {
         String token = restToken(k).orElse(null);
         if (token == null) return null;
-        return k.kind == Key.Kind.GITLAB ? new GitLabApi(GitLabApi.apiBase(k.host), token)
+        return k.kind == Key.Kind.GITLAB ? new GitLabApi(k.host, token)
                 : new GitHubApi(GitHubApi.apiBase(k.host), token);
     }
 
@@ -229,9 +238,8 @@ public final class HostAccess {
         ArrayNode out = Json.MAPPER.createArrayNode();
         LiveAgent l = rt.live(agentId);
         if (l == null) return out;
-        Profile p = rt.profile(l.agent.profile);
         Upstream u = upstream(l, server);
-        if (u == null || p == null) {
+        if (u == null) {
             rt.say(l.agent, "⚠ The token of " + l.agent.name + "'s " + server + " key can't be read, so it has no "
                     + server + " tools.", "warn");
             return out;
@@ -252,21 +260,18 @@ public final class HostAccess {
                 }
                 u.listed = !u.byTool.isEmpty();
             }
-            for (JsonNode t : u.tools) {
-                if (HostActions.listable(u.key.kind, t.path("name").asText(), p.allowedTools, p.disallowedTools)) out.add(t);
-            }
+            out.addAll(u.tools);
         }
         return out;
     }
 
-    /** {@code tools/call}: refused here unless the profile may do this very action; otherwise forwarded as it is. */
+    /** {@code tools/call}: forwarded as it is, with the marker on replies; Claude Code's own rules decided whether to ask you. */
     ObjectNode call(String agentId, String server, String tool, JsonNode args) {
         LiveAgent l = rt.live(agentId);
         if (l == null) return refused(AgentPrompts.result("common", "call-failed", Map.of("reason", "this agent no longer exists")));
         Agent a = l.agent;
-        Profile p = rt.profile(a.profile);
         Upstream u = upstream(l, server);
-        if (u == null || p == null) {
+        if (u == null) {
             String m = noKeyMessage(a);
             rt.keyStop(l, m);
             return refused(m);
@@ -274,16 +279,7 @@ public final class HostAccess {
         Key.Kind kind = u.key.kind;
         String kindName = Key.kindName(kind);
         ObjectNode sent = args != null && args.isObject() ? ((ObjectNode) args).deepCopy() : Json.MAPPER.createObjectNode();
-        Action action = HostActions.classify(kind, tool, sent);
-        if (action == null) {
-            rt.say(a, "✗ " + server + " " + tool + " refused: Juno doesn't allow it.", "warn");
-            return refused(result("unknown", Map.of("tool", tool)));
-        }
-        if (!HostActions.allowed(action, p.allowedTools, p.disallowedTools)) {
-            rt.say(a, "✗ " + server + " " + tool + " refused: " + action.rule() + " isn't allowed for " + a.profile + ".", "warn");
-            return refused(result("not-allowed", Map.of("profile", a.profile, "host_kind", kindName, "rule", action.rule())));
-        }
-        String field = HostActions.commentField(kind, tool, action);
+        String field = HostActions.commentField(kind, tool, sent);
         if (field != null && !sent.path(field).asText("").isBlank()
                 && !sent.path(field).asText("").startsWith("🤖 ")) {
             sent.put(field, "🤖 " + a.name + " (" + a.profile + "): " + sent.path(field).asText());
@@ -295,7 +291,7 @@ public final class HostAccess {
         }
         try {
             JsonNode r = c.callTool(tool, sent);
-            if (action == Action.OPEN && !r.path("isError").asBoolean(false)) {
+            if (HostActions.isOpen(kind, tool, sent) && !r.path("isError").asBoolean(false)) {
                 rt.prOpened(l, kind, sent, r);
             }
             return r.isObject() ? (ObjectNode) r : refused(result("failed", Map.of("host_kind", kindName, "detail", "an empty answer")));
@@ -351,7 +347,7 @@ public final class HostAccess {
         }
         HostApi api = api(k);
         if (api == null) out.add(new HostApi.TestLine("REST", false, k.kind == Key.Kind.GITLAB
-                ? "the git and REST token can't be read" : "the token can't be read"));
+                ? "the git token can't be read" : "the token can't be read"));
         else out.addAll(api.test(repo));
         return out;
     }
