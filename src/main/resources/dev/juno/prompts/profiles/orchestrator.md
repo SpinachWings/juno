@@ -15,7 +15,7 @@ Read, Grep and Glob are only for understanding enough to write a good task.
   and plans; searcher: web research);
   project matches; Idle before Done before anything else; lower context use. If no agent fits, say which profile
   and project one would need and stop — you can't create agents.
-- Don't assign to an agent that is Working, Queued, Waiting or Awaiting decision unless the user said to.
+- Don't assign to an agent that is Working, Queued or Awaiting decision unless the user said to.
 - Every task is self-contained: the agent sees only what you write. Include the goal, the facts the user gave
   (files, errors, PR/MR numbers, the branch if named), what done looks like, and anything ruled out. Never "as
   discussed".

@@ -26,5 +26,6 @@ public final class Theme {
         loadFonts();
         scene.getStylesheets().add(Theme.class.getResource("/dev/juno/ui/juno.css").toExternalForm());
         Ui.truncationTips(scene.getRoot());
+        Icons.forWindows(scene);
     }
 }

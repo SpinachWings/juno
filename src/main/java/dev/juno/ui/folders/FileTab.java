@@ -1,9 +1,7 @@
-package dev.juno.ui.notes;
+package dev.juno.ui.folders;
 
-import dev.juno.store.NotesFolder;
-import dev.juno.store.NotesState;
+import dev.juno.store.FolderTree;
 import dev.juno.ui.Ui;
-import dev.juno.ui.pane.MarkdownPreview;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.regex.Matcher;
@@ -11,7 +9,6 @@ import java.util.regex.Pattern;
 import javafx.animation.PauseTransition;
 import javafx.geometry.Insets;
 import javafx.scene.control.Label;
-import javafx.scene.control.SplitPane;
 import javafx.scene.control.Tab;
 import javafx.scene.input.KeyCode;
 import javafx.scene.input.KeyEvent;
@@ -25,32 +22,30 @@ import org.fxmisc.richtext.model.StyleSpans;
 import org.fxmisc.richtext.model.StyleSpansBuilder;
 
 /**
- * One open note (design §9): a Markdown editor and its live preview. Edits are saved a moment after typing stops, and
- * when the tab is closed or the notepad is left. A note changed on disk meanwhile is never overwritten unasked.
+ * One open file (design §9): a text editor, with light colouring for Markdown. Edits are saved a moment after typing
+ * stops, and when the tab is closed or the Folders view is left. A file changed on disk meanwhile is never overwritten
+ * unasked.
  */
-final class NoteTab extends Tab {
+final class FileTab extends Tab {
     private static final Pattern HIGHLIGHT = Pattern.compile(
             "(?<head>^#{1,6} .*$)|(?<fence>^(```|~~~).*$)|(?<quote>^> .*$)|(?<list>^\\s*([-*+]|\\d+\\.) )"
                     + "|(?<code>`[^`\\n]+`)|(?<bold>\\*\\*[^*\\n]+\\*\\*)",
             Pattern.MULTILINE);
 
-    private final NotesFolder notes;
+    private final FolderTree notes;
     private final Runnable onTitle;
     private String path;
     private final StyleClassedTextArea editor = new StyleClassedTextArea();
-    private final MarkdownPreview preview = new MarkdownPreview();
-    private final SplitPane panes = new SplitPane();
     private final VirtualizedScrollPane<StyleClassedTextArea> editorScroll = new VirtualizedScrollPane<>(editor);
     private final HBox banner = new HBox(10);
     private final Label bannerText = new Label();
     private final PauseTransition save = new PauseTransition(Duration.millis(700));
-    private final PauseTransition render = new PauseTransition(Duration.millis(120));
     private long knownModified;
     private boolean dirty;
     private boolean conflict;
     private boolean loading;
 
-    NoteTab(NotesFolder notes, String path, Runnable onTitle) {
+    FileTab(FolderTree notes, String path, Runnable onTitle) {
         this.notes = notes;
         this.path = path;
         this.onTitle = onTitle;
@@ -63,11 +58,9 @@ final class NoteTab extends Tab {
             dirty = true;
             retitle();
             save.playFromStart();
-            render.playFromStart();
             highlight();
         });
         save.setOnFinished(e -> save());
-        render.setOnFinished(e -> preview.show(editor.getText()));
         editor.addEventFilter(KeyEvent.KEY_PRESSED, e -> {
             if (e.isShortcutDown() && e.getCode() == KeyCode.S) {
                 e.consume();
@@ -86,9 +79,8 @@ final class NoteTab extends Tab {
         banner.setVisible(false);
         banner.setManaged(false);
 
-        panes.getItems().addAll(editorScroll, preview.node());
-        VBox box = new VBox(banner, panes);
-        VBox.setVgrow(panes, Priority.ALWAYS);
+        VBox box = new VBox(banner, editorScroll);
+        VBox.setVgrow(editorScroll, Priority.ALWAYS);
         setContent(box);
         setClosable(true);
         reload();
@@ -98,7 +90,15 @@ final class NoteTab extends Tab {
         return path;
     }
 
-    /** The note moved or was renamed. */
+    FolderTree tree() {
+        return notes;
+    }
+
+    java.nio.file.Path absolute() {
+        return notes.root().resolve(path);
+    }
+
+    /** The file moved or was renamed. */
     void retarget(String newPath) {
         this.path = newPath;
         retitle();
@@ -116,19 +116,15 @@ final class NoteTab extends Tab {
         editor.requestFocus();
     }
 
-    void mode(NotesState.Mode mode) {
-        panes.getItems().setAll(switch (mode) {
-            case EDIT -> java.util.List.of(editorScroll);
-            case PREVIEW -> java.util.List.of(preview.node());
-            case SPLIT -> java.util.List.of(editorScroll, preview.node());
-        });
-        if (mode == NotesState.Mode.SPLIT) panes.setDividerPositions(0.5);
+    /** Editor text size in points. */
+    void size(double points) {
+        editor.setStyle("-fx-font-size: " + points + "pt;");
     }
 
     private void retitle() {
         String name = path.contains("/") ? path.substring(path.lastIndexOf('/') + 1) : path;
         setText(name + (dirty ? " ●" : ""));
-        setTooltip(new javafx.scene.control.Tooltip(path));
+        setTooltip(new javafx.scene.control.Tooltip(notes.root().resolve(path).toString()));
         onTitle.run();
     }
 
@@ -140,7 +136,7 @@ final class NoteTab extends Tab {
         String text;
         try {
             text = notes.read(path);
-        } catch (NotesFolder.NotesException e) {
+        } catch (FolderTree.FolderException e) {
             text = "";
             showBanner(e.getMessage());
             conflict = true;
@@ -154,7 +150,6 @@ final class NoteTab extends Tab {
         conflict = false;
         banner.setVisible(false);
         banner.setManaged(false);
-        preview.show(text);
         highlight();
         retitle();
     }
@@ -175,7 +170,7 @@ final class NoteTab extends Tab {
         }
         try {
             notes.write(path, editor.getText());
-        } catch (NotesFolder.NotesException e) {
+        } catch (FolderTree.FolderException e) {
             conflict = true;
             showBanner(e.getMessage());
             return;
@@ -214,7 +209,7 @@ final class NoteTab extends Tab {
             dirty = false;
             retitle();
             return;
-        } catch (NotesFolder.NotesException e) {
+        } catch (FolderTree.FolderException e) {
             conflict = true;
             showBanner(e.getMessage());
             return;
@@ -232,6 +227,7 @@ final class NoteTab extends Tab {
 
     private void highlight() {
         String text = editor.getText();
+        if (!path.toLowerCase(java.util.Locale.ROOT).matches(".*\\.(md|markdown)")) return;
         StyleSpansBuilder<Collection<String>> b = new StyleSpansBuilder<>();
         Matcher m = HIGHLIGHT.matcher(text);
         int last = 0;

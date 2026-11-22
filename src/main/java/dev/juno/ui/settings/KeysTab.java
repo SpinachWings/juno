@@ -51,6 +51,7 @@ public final class KeysTab extends BorderPane {
         list.setPrefWidth(220);
         list.setItems(FXCollections.observableArrayList(ctx.settings.keys));
         list.setCellFactory(v -> new ListCell<>() {
+            { Ui.fit(this); }
             @Override protected void updateItem(Key k, boolean empty) {
                 super.updateItem(k, empty);
                 setText(empty || k == null ? null : k.label + "  ·  " + k.host);

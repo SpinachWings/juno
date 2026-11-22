@@ -75,7 +75,7 @@ public interface Provider {
     record LaunchSpec(String executable, Path workingDir, String model, String effort, String permissionMode,
                       List<String> allowedTools, List<String> disallowedTools, int maxTurns, Double spendLimit,
                       Path systemPromptFile, Path mcpConfigFile, Path pluginDir, String resumeSession,
-                      String agentId, Map<String, String> gitEnvironment) {}
+                      String agentId, Map<String, String> gitEnvironment, boolean chrome) {}
 
     enum HookStatus { INSTALLED, OUTDATED, NOT_INSTALLED }
 

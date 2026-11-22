@@ -79,6 +79,7 @@ public final class ClaudeCodeProvider implements Provider {
         if (s.systemPromptFile() != null) {
             c.addAll(List.of("--append-system-prompt-file", s.systemPromptFile().toString()));
         }
+        if (s.chrome()) c.add("--chrome");
         c.add("--strict-mcp-config");
         if (s.mcpConfigFile() != null) {
             c.addAll(List.of("--mcp-config", s.mcpConfigFile().toString()));

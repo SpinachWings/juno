@@ -238,15 +238,15 @@
 .button.inbox-busy { -fx-border-color: -juno-warn; -fx-text-fill: -juno-warn; }
 .cards-scroll, .cards-scroll > .viewport { -fx-background-color: transparent; -fx-background: transparent; -fx-padding: 0; }
 
-/* ===== Notepad ===== */
-.notes-view { -fx-background-color: -juno-bg; }
-.notes-bar { -fx-background-color: -juno-panel; -fx-border-color: -juno-line; -fx-border-width: 0 0 1 0; }
-.notes-tree, .notes-tree .tree-cell { -fx-background-color: -juno-panel; -fx-background: -juno-panel; }
-.notes-tree .tree-cell { -fx-text-fill: -juno-text; -fx-padding: 3 4 3 4; }
-.notes-tree .tree-cell:filled:hover { -fx-background-color: -juno-raised; }
-.notes-tree .tree-cell:filled:selected { -fx-background-color: -juno-select; -fx-text-fill: -juno-bright; }
-.notes-tree .tree-cell.notes-folder { -fx-text-fill: -juno-magenta; }
-.notes-tree .tree-disclosure-node .arrow { -fx-background-color: -juno-dim; }
+/* ===== Folders view ===== */
+.folders-view { -fx-background-color: -juno-bg; }
+.folders-bar { -fx-background-color: -juno-panel; -fx-border-color: -juno-line; -fx-border-width: 0 0 1 0; }
+.folders-tree, .folders-tree .tree-cell { -fx-background-color: -juno-panel; -fx-background: -juno-panel; }
+.folders-tree .tree-cell { -fx-text-fill: -juno-text; -fx-padding: 3 4 3 4; }
+.folders-tree .tree-cell:filled:hover { -fx-background-color: -juno-raised; }
+.folders-tree .tree-cell:filled:selected { -fx-background-color: -juno-select; -fx-text-fill: -juno-bright; }
+.folders-tree .tree-cell.folders-folder { -fx-text-fill: -juno-magenta; }
+.folders-tree .tree-disclosure-node .arrow { -fx-background-color: -juno-dim; }
 .split-pane { -fx-background-color: -juno-bg; -fx-padding: 0; }
 .split-pane > .split-pane-divider { -fx-background-color: -juno-line; -fx-padding: 0 1 0 1; }
 .editor { -fx-background-color: -juno-bg; -fx-padding: 6 10 6 10; -fx-font-family: "Share Tech Mono", "Consolas", monospace; -fx-font-size: 13px; }

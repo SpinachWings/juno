@@ -107,6 +107,17 @@ public final class Ui {
         });
     }
 
+    /**
+     * Makes a list cell take the width of its list and cut long text with an ellipsis, instead of growing wider and
+     * giving the list a horizontal scrollbar. The whole text shows as a tooltip when it is cut ({@link #truncationTips}).
+     */
+    public static void fit(javafx.scene.control.Labeled cell) {
+        cell.setPrefWidth(0);
+        cell.setMinWidth(0);
+        cell.setWrapText(false);
+        cell.setTextOverrun(javafx.scene.control.OverrunStyle.ELLIPSIS);
+    }
+
     private static final String TRUNCATION_TIP = "juno-truncation-tip";
 
     private static void showWholeTextWhenCut(javafx.scene.control.Labeled l) {

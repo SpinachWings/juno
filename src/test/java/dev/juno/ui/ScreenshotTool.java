@@ -49,7 +49,7 @@ public final class ScreenshotTool {
         Key k = new Key();
         k.id = "k1"; k.label = "me"; k.token = TokenStore.keyringReference("k1");
         Key bot = new Key();
-        bot.id = "k2"; bot.label = "review-bot"; bot.host = "gitlab.com"; bot.kind = Key.Kind.GITLAB;
+        bot.id = "k2"; bot.label = "review-bot-with-a-very-long-label-for-the-tooltip-check"; bot.host = "gitlab.com"; bot.kind = Key.Kind.GITLAB;
         bot.token = "env:GITLAB_BOT_TOKEN"; bot.gitName = "Review Bot"; bot.gitEmail = "bot@example.com";
         ctx.settings.keys.add(k);
         ctx.settings.keys.add(bot);

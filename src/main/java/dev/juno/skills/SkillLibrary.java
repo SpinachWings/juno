@@ -99,7 +99,7 @@ public final class SkillLibrary {
     // ---- import ----
 
     /**
-     * Imports a SKILL.md file, a folder of skills, or a .zip / .skill archive as a new pack.
+     * Imports a SKILL.md file or a .zip / .skill archive as a new pack.
      * A pack with a name already in use gets a numbered id.
      */
     public SkillPack importPack(Path source, Settings settings) throws IOException {
@@ -110,10 +110,7 @@ public final class SkillLibrary {
             String packName;
             String fileName = source.getFileName().toString();
             String lower = fileName.toLowerCase(Locale.ROOT);
-            if (Files.isDirectory(source)) {
-                root = source;
-                packName = fileName;
-            } else if (lower.endsWith(".zip") || lower.endsWith(".skill")) {
+            if (lower.endsWith(".zip") || lower.endsWith(".skill")) {
                 unzip(source, temp);
                 root = soleChildDir(temp);
                 packName = fileName.substring(0, fileName.lastIndexOf('.'));
@@ -125,7 +122,7 @@ public final class SkillLibrary {
                 root = temp;
                 packName = name;
             } else {
-                throw new IOException("Import a SKILL.md, a folder of skills, or a .zip / .skill file.");
+                throw new IOException("Import a SKILL.md, or a .zip / .skill file.");
             }
 
             List<Path> skillDirs = findSkillDirs(root);

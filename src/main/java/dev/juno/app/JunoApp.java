@@ -1,6 +1,7 @@
 package dev.juno.app;
 
 import dev.juno.ui.FirstRun;
+import dev.juno.ui.Icons;
 import dev.juno.ui.Theme;
 import dev.juno.ui.Ui;
 import java.io.IOException;
@@ -32,6 +33,7 @@ public final class JunoApp extends Application {
         Scene scene = new Scene(window.root(), 1280, 800);
         Theme.apply(scene);
         stage.setTitle("Juno");
+        Icons.taskbar();
         stage.setScene(scene);
         stage.show();
         window.checkClaude();

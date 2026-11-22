@@ -25,7 +25,6 @@ public final class SystemTab extends ScrollPane {
     private final Spinner<Integer> hops = spinner(1, 100);
     private final Spinner<Integer> maxWorking = spinner(1, 50);
     private final Spinner<Integer> idle = spinner(1, 1440);
-    private final TextField notes = new TextField();
     private final Button install = Ui.button("Install", this::installHook);
     private final Button uninstall = Ui.button("Uninstall", this::uninstallHook);
 
@@ -69,16 +68,10 @@ public final class SystemTab extends ScrollPane {
                 "Juno proposes a fresh start for an agent whose context passes this share of its window.");
         r = row(g, r, "Report length (characters)", report, "Reports to Juno are cut to this length.");
         r = row(g, r, "Hop limit", hops, "Agent-to-agent messages in a chain before it stops without a message from you.");
-        r = row(g, r, "Max agents working at once", maxWorking, "Further agents queue. Juno and Waiting agents don't count.");
+        r = row(g, r, "Max agents working at once", maxWorking, "Further agents queue. Juno never counts.");
         r = row(g, r, "Idle process timeout (min)", idle, "An idle agent's process is closed; its next message resumes it.");
         box.getChildren().add(g);
 
-        box.getChildren().add(Ui.subheading("Notes folder"));
-        HBox.setHgrow(notes, Priority.ALWAYS);
-        notes.setPromptText("Where your notes live (not inside a project folder)");
-        box.getChildren().add(Ui.row(notes, Ui.button("Browse…", () ->
-                Ui.chooseFolder(getScene().getWindow(), "Notes folder", notes.getText())
-                        .ifPresent(f -> notes.setText(f.getAbsolutePath())))));
 
         box.getChildren().add(Ui.subheading("Storage"));
         box.getChildren().add(new StorageSection(ctx));
@@ -123,7 +116,6 @@ public final class SystemTab extends ScrollPane {
         hops.getValueFactory().setValue(s.hopLimit);
         maxWorking.getValueFactory().setValue(s.maxAgentsWorking);
         idle.getValueFactory().setValue(s.idleTimeoutMinutes);
-        notes.setText(s.notesFolder);
     }
 
     private void save() {
@@ -136,9 +128,8 @@ public final class SystemTab extends ScrollPane {
         s.hopLimit = hops.getValue();
         s.maxAgentsWorking = maxWorking.getValue();
         s.idleTimeoutMinutes = idle.getValue();
-        s.notesFolder = notes.getText().trim();
         s.firstRunDone = ctx.settings.system.firstRunDone;
-        List<String> problems = Validation.system(s, ctx.settings.projects);
+        List<String> problems = Validation.system(s);
         if (!problems.isEmpty()) {
             Ui.problems(getScene().getWindow(), problems);
             return;

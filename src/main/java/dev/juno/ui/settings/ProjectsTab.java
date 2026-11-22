@@ -31,6 +31,7 @@ public final class ProjectsTab extends BorderPane {
         list.getStyleClass().add("side-list");
         list.setPrefWidth(220);
         list.setCellFactory(v -> new ListCell<>() {
+            { Ui.fit(this); }
             @Override protected void updateItem(Project p, boolean empty) {
                 super.updateItem(p, empty);
                 setText(empty || p == null ? null : p.name);
@@ -91,7 +92,7 @@ public final class ProjectsTab extends BorderPane {
         p.remote = remote.getText().trim();
         p.buildAndTestCommands = Arrays.stream(commands.getText().split("\\R"))
                 .map(String::trim).filter(s -> !s.isEmpty()).toList();
-        List<String> problems = Validation.project(p, ctx.settings.projects, ctx.settings.system.notesFolder);
+        List<String> problems = Validation.project(p, ctx.settings.projects);
         if (!problems.isEmpty()) {
             Ui.problems(getScene().getWindow(), problems);
             return;

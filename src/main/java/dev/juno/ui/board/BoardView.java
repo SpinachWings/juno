@@ -42,7 +42,7 @@ public final class BoardView implements PaneHost {
     private final Map<String, SetupForm> setups = new LinkedHashMap<>();
     private final List<Runnable> listeners = new ArrayList<>();
     private String maximised;
-    /** The agent whose pane is shown beside the notes right now; the board shows a note in its cell instead. */
+    /** The agent whose pane is shown beside the files right now; its board cell says so instead. */
     private String borrowed;
     private Runnable showRequested = () -> {};
     private String lastUsed = BoardLayout.JUNO;
@@ -93,13 +93,13 @@ public final class BoardView implements PaneHost {
         return a == null ? null : panes.get(a.id);
     }
 
-    /** What to do before the board is asked to show an agent (the main window switches back from the notes). */
+    /** What to do before the board is asked to show an agent (the main window switches back from the Folders view). */
     public void onShowRequested(Runnable r) {
         showRequested = r;
     }
 
     /**
-     * Lends the agent's pane to the notepad (design §9): the same pane, output and input, taken out of its cell, which
+     * Lends the agent's pane to the Folders view (design §9): the same pane, output and input, taken out of its cell, which
      * says where it went. Returns the pane, or null if that agent doesn't exist any more.
      */
     public AgentPane borrow(Agent a) {

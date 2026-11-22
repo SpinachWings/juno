@@ -23,6 +23,8 @@ public class Profile {
     public Double spendLimit;
     public boolean needsProjectFolder;
     public boolean editsFiles;
+    /** Its agents use Claude in Chrome (a real browser) for web apps they build (design §5.4). */
+    public boolean browser;
     public List<ProfileCommand> commands = new ArrayList<>();
 
     public static final List<String> PERMISSION_MODES =
@@ -39,7 +41,7 @@ public class Profile {
         p.allowedTools = new ArrayList<>(allowedTools);
         p.disallowedTools = new ArrayList<>(disallowedTools);
         p.maxTurns = maxTurns; p.spendLimit = spendLimit;
-        p.needsProjectFolder = needsProjectFolder; p.editsFiles = editsFiles;
+        p.needsProjectFolder = needsProjectFolder; p.editsFiles = editsFiles; p.browser = browser;
         for (ProfileCommand c : commands) p.commands.add(new ProfileCommand(c.name, c.template, false));
         return p;
     }

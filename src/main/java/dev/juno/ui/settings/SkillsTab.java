@@ -33,6 +33,7 @@ public final class SkillsTab extends BorderPane {
         list.getStyleClass().add("side-list");
         list.setPrefWidth(220);
         list.setCellFactory(v -> new ListCell<>() {
+            { Ui.fit(this); }
             @Override protected void updateItem(SkillPack p, boolean empty) {
                 super.updateItem(p, empty);
                 setText(empty || p == null ? null : (p.bundled ? LOCK + " " : "   ") + p.name);
@@ -40,8 +41,7 @@ public final class SkillsTab extends BorderPane {
         });
         list.getSelectionModel().selectedItemProperty().addListener((o, a, p) -> show(p));
         Button importFile = Ui.button("Import file…", this::importFile);
-        Button importFolder = Ui.button("Import folder…", this::importFolder);
-        VBox left = new VBox(8, importFile, importFolder, list);
+        VBox left = new VBox(8, importFile, list);
         VBox.setVgrow(list, Priority.ALWAYS);
         left.setPadding(new Insets(0, 12, 0, 0));
         setLeft(left);
@@ -80,10 +80,6 @@ public final class SkillsTab extends BorderPane {
         if (f != null) importFrom(f);
     }
 
-    private void importFolder() {
-        Ui.chooseFolder(getScene().getWindow(), "Import a skill folder", "").ifPresent(this::importFrom);
-    }
-
     private void importFrom(File f) {
         try {
             SkillPack pack = ctx.skills.importPack(f.toPath(), ctx.settings);
@@ -98,7 +94,7 @@ public final class SkillsTab extends BorderPane {
     private void show(SkillPack pack) {
         detail.getChildren().clear();
         if (pack == null) {
-            detail.getChildren().addAll(Ui.dim("Import a SKILL.md, a folder of skills, or a .zip / .skill file."), message);
+            detail.getChildren().addAll(Ui.dim("Import a SKILL.md, or a .zip / .skill file."), message);
             return;
         }
         detail.getChildren().add(Ui.heading(pack.name));

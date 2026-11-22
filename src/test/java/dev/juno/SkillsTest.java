@@ -24,6 +24,19 @@ class SkillsTest {
         Files.writeString(dir.resolve("SKILL.md"), "---\nname: " + name + "\ndescription: d\n---\nbody\n");
     }
 
+    /** Zips {@code folder} (entries under its own name) next to it, as a skill pack archive. */
+    private static Path zipOf(Path folder) throws Exception {
+        Path zip = folder.resolveSibling(folder.getFileName() + ".zip");
+        try (ZipOutputStream z = new ZipOutputStream(Files.newOutputStream(zip)); var files = Files.walk(folder)) {
+            for (Path f : files.filter(Files::isRegularFile).toList()) {
+                z.putNextEntry(new ZipEntry(folder.getFileName() + "/" + folder.relativize(f).toString().replace('\\', '/')));
+                z.write(Files.readAllBytes(f));
+                z.closeEntry();
+            }
+        }
+        return zip;
+    }
+
     @Test
     void bundledSuperpowersIsRefreshedWithLockedAssignments() throws Exception {
         JunoHome home = new JunoHome(tmp);
@@ -71,7 +84,7 @@ class SkillsTest {
     }
 
     @Test
-    void importsSingleFileFolderAndZip() throws Exception {
+    void importsSingleFileAndZips() throws Exception {
         SkillLibrary lib = new SkillLibrary(new JunoHome(tmp.resolve("home")));
         Settings s = new Settings();
 
@@ -84,7 +97,7 @@ class SkillsTest {
         Path folder = tmp.resolve("my-pack");
         skill(folder.resolve("one"), "one");
         skill(folder.resolve("two"), "two");
-        SkillPack b = lib.importPack(folder, s);
+        SkillPack b = lib.importPack(zipOf(folder), s);
         assertEquals(List.of("one", "two"), lib.skillsOf(b));
         assertEquals("my-pack", b.name);
 
@@ -98,12 +111,12 @@ class SkillsTest {
         assertEquals(List.of("alpha"), lib.skillsOf(c));
 
         // Same name again gets its own id.
-        SkillPack b2 = lib.importPack(folder, s);
+        SkillPack b2 = lib.importPack(zipOf(folder), s);
         assertNotEquals(b.id, b2.id);
 
         lib.remove(b2, s);
         assertFalse(Files.exists(lib.packDir(b2)));
-        assertThrows(java.io.IOException.class, () -> lib.importPack(tmp.resolve("empty-dir-" + 1), s));
+        assertThrows(java.io.IOException.class, () -> lib.importPack(tmp.resolve("a-folder"), s), "folders are not imported");
     }
 
     @Test
@@ -120,7 +133,7 @@ class SkillsTest {
         assertFalse(Files.exists(tmp.resolve("escape.txt")));
 
         Path empty = Files.createDirectories(tmp.resolve("empty"));
-        assertThrows(java.io.IOException.class, () -> lib.importPack(empty, s));
+        assertThrows(java.io.IOException.class, () -> lib.importPack(zipOf(empty), s));
         assertTrue(s.skillPacks.isEmpty());
     }
 
@@ -131,7 +144,7 @@ class SkillsTest {
         Path folder = tmp.resolve("p");
         skill(folder.resolve("one"), "one");
         skill(folder.resolve("two"), "two");
-        SkillPack p = lib.importPack(folder, s);
+        SkillPack p = lib.importPack(zipOf(folder), s);
         SkillResolver r = new SkillResolver(lib);
 
         assertEquals(List.of("one", "two"), r.enabledIn(p, "anyone"));

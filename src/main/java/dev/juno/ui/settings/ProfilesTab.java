@@ -37,6 +37,7 @@ public final class ProfilesTab extends BorderPane {
     private final TextField maxTurns = new TextField();
     private final TextField spend = new TextField();
     private final CheckBox needsFolder = new CheckBox("Its agents won't start without a project");
+    private final CheckBox browser = new CheckBox("Its agents use Claude in Chrome to try out web apps they build");
     private final CheckBox editsFiles = new CheckBox("Its agents edit files (project build & test commands are allowed for them)");
     private final ListView<ProfileCommand> commandList = new ListView<>();
     private final TextField commandName = new TextField();
@@ -57,6 +58,7 @@ public final class ProfilesTab extends BorderPane {
         list.getStyleClass().add("side-list");
         list.setPrefWidth(220);
         list.setCellFactory(v -> new ListCell<>() {
+            { Ui.fit(this); }
             @Override protected void updateItem(Profile p, boolean empty) {
                 super.updateItem(p, empty);
                 setText(empty || p == null ? null : (p.builtIn ? LOCK + " " : "   ") + p.name);
@@ -87,6 +89,7 @@ public final class ProfilesTab extends BorderPane {
         commandTemplate.setPrefRowCount(6);
         commandList.setPrefHeight(90);
         commandList.setCellFactory(v -> new ListCell<>() {
+            { Ui.fit(this); }
             @Override protected void updateItem(ProfileCommand c, boolean empty) {
                 super.updateItem(c, empty);
                 setText(empty || c == null ? null : (c.builtIn ? LOCK + " " : "   ") + "/" + c.name);
@@ -118,6 +121,7 @@ public final class ProfilesTab extends BorderPane {
                 field("Disallowed tools (one per line)", disallowed, true),
                 field("Max turns (per message)", maxTurns, false), field("Spend limit", spend, false),
                 field("Needs a project folder", needsFolder, true), field("Edits files", editsFiles, true),
+                field("Uses Chrome", browser, true),
                 section("Profile commands", commandList, Ui.row(addCommand, removeCommand), commandName,
                         commandTemplate),
                 section("Skills", skillsSummary),
@@ -148,7 +152,7 @@ public final class ProfilesTab extends BorderPane {
     }
 
     private List<Node> lockable() {
-        return List.of(name, permission, prompt, allowed, disallowed, needsFolder, editsFiles);
+        return List.of(name, permission, prompt, allowed, disallowed, needsFolder, editsFiles, browser);
     }
 
     private void edit(Profile p, boolean isNew) {
@@ -167,6 +171,7 @@ public final class ProfilesTab extends BorderPane {
         spend.setText(p.spendLimit == null ? "" : String.valueOf(p.spendLimit));
         needsFolder.setSelected(p.needsProjectFolder);
         editsFiles.setSelected(p.editsFiles);
+        browser.setSelected(p.browser);
         for (Node n : lockable()) {
             boolean readOnlyLike = n instanceof TextInputControl;
             if (readOnlyLike) ((TextInputControl) n).setEditable(!locked);
@@ -277,6 +282,7 @@ public final class ProfilesTab extends BorderPane {
             p.disallowedTools = lines(disallowed);
             p.needsProjectFolder = needsFolder.isSelected();
             p.editsFiles = editsFiles.isSelected();
+            p.browser = browser.isSelected();
         } else {
             p.name = editing.name;
             p.permissionMode = editing.permissionMode;

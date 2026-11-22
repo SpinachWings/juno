@@ -97,10 +97,10 @@ class ClaudeStreamParserTest {
         ClaudeCodeProvider cc = new ClaudeCodeProvider(dir.resolve("claude"), new JunoHome(dir.resolve("home")));
         Provider.LaunchSpec s = new Provider.LaunchSpec("claude", dir, "haiku", "low", "default",
                 List.of("Read", "Bash(git:*)"), List.of("Write"), 150, 2.5, dir.resolve("sp.md"), dir.resolve("mcp.json"),
-                dir.resolve("plugins"), "sess-1", "a1", java.util.Map.of());
+                dir.resolve("plugins"), "sess-1", "a1", java.util.Map.of(), true);
         String line = String.join(" ", cc.commandLine(s));
         for (String flag : List.of("-p", "--input-format stream-json", "--output-format stream-json", "--verbose",
-                "--forward-subagent-text", "--model haiku", "--effort low", "--permission-mode default",
+                "--forward-subagent-text", "--chrome", "--model haiku", "--effort low", "--permission-mode default",
                 "--allowedTools Read,Bash(git:*)", "--disallowedTools Write", "--max-turns 150", "--max-budget-usd 2.5",
                 "--append-system-prompt-file", "--strict-mcp-config", "--mcp-config",
                 "--permission-prompt-tool mcp__juno__request_permission", "--plugin-dir", "--resume sess-1")) {

@@ -215,7 +215,7 @@ public final class AgentPane {
     }
 
     /**
-     * Shown beside the notes instead of on the board (design §9): the same pane, without the buttons that arrange the
+     * Shown beside the files instead of on the board (design §9): the same pane, without the buttons that arrange the
      * board (split, maximise, hide).
      */
     public void setEmbedded(boolean embedded) {

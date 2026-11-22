@@ -351,7 +351,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
         record(l, new AgentEvent.UserText(wrapped, "hey"));
     }
 
-    /** Agents with an open turn, Waiting ones excluded (design §3); Juno never counts. */
+    /** Agents with an open turn (design §3); Juno never counts. */
     int workingCount() {
         int n = 0;
         for (LiveAgent x : live.values()) {
@@ -513,7 +513,7 @@ public final class AgentRuntime implements JunoMcpServer.Calls {
             }
             Provider.LaunchSpec spec = new Provider.LaunchSpec(exe, folder, model, effort, p.permissionMode,
                     allowed, disallowed(a, p), p.maxTurns, p.spendLimit, sys, mcpFile, plugins, a.sessionId, a.id,
-                    host.gitEnvironment(a, helper, project(a)));
+                    host.gitEnvironment(a, helper, project(a)), p.browser);
             hooks.reset(a.id);
             AgentProcess[] self = new AgentProcess[1];
             l.process = self[0] = AgentProcess.start(provider, spec,

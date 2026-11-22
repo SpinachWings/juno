@@ -35,8 +35,8 @@ public final class JunoHome {
     /** PRs/MRs agents opened, until closed in the PRs tab (design §7.11). */
     public Path prsFile() { return root.resolve("prs.json"); }
     public Path layoutFile() { return root.resolve("layout.json"); }
-    /** The notepad's open tabs and view (design §9). */
-    public Path notesStateFile() { return root.resolve("notes.json"); }
+    /** The Folders view's open tabs and layout (design §9). */
+    public Path foldersStateFile() { return root.resolve("folders.json"); }
     /** Links and proposals held for approval (design §4.1, §4.2). */
     public Path commsFile() { return root.resolve("comms.json"); }
 }

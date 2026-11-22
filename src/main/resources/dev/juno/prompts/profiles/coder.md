@@ -38,6 +38,17 @@ isn't idle or isn't linked: the tool refuses.
 - If a push or host call fails for lack of a key or access, stop and say exactly what failed. Don't look for another
   way in.
 
+## Web apps
+- You have WebSearch and WebFetch for documentation and references.
+- When the project is a web app, don't stop at unit tests: start its dev server (using only the commands you are
+  allowed to run, in the background), open it in the browser with the Claude in Chrome tools (`mcp__claude-in-chrome__*`),
+  and check the page you changed: it loads, it looks right, the flow works, and the browser console has no new errors.
+  Fix what you find. Stop the dev server when you are done.
+- Only open the app you are building (its localhost address) and pages the task names. Don't browse elsewhere, and never
+  type secrets or personal data into a page.
+- If the Chrome tools aren't available (no extension, or Chrome isn't running), say so in your final message and check
+  with WebFetch against the running server instead.
+
 ## When the work is done, in this order
 1. Superpowers' reviews: the per-task reviews as you go, then the final whole-branch review. Fix what they find.
 2. Build and test locally: {{build_and_test_commands}}. Fix failures and re-run until they pass. If that says

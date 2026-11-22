@@ -16,9 +16,14 @@ and the lessons in §12.
 
 - Java 27, JavaFX 27, Maven, Jackson. Windows first; macOS/Linux should work.
 - **RichTextFX** for code, diffs and terminal text (selectable, copyable, syntax highlighted); **commonmark-java** for
-  Markdown (agent messages, notepad preview); **java-keyring** (OS vaults, via JNA) for tokens.
+  Markdown (agent messages); **java-keyring** (OS vaults, via JNA) for tokens.
 - Theme: near-black greys, light blue `#6FD6FF` and magenta `#FF4FD8` accents, square corners; Share Tech Mono for
   UI text, VT323 for titles and headings (bundled, SIL OFL). Palette defined once at the top of one stylesheet.
+- Icon: a ringed planet on a deep-space square (`ui/icons`, several sizes). It sits next to the title in the toolbar and
+  is the icon of every window and of the taskbar or dock entry (set through the window icons, and through the AWT
+  taskbar API where the platform supports it).
+- Text that doesn't fit is cut with an ellipsis and shows in full as a tooltip: pane bars, lists (including the lists in
+  Settings), cards, labels. List cells take the width of their list and never make it scroll sideways.
 - All data under `~/.juno` (override with `JUNO_HOME`). Every write is atomic (temp file + move).
 
 ## 3. Terms and statuses
@@ -161,7 +166,7 @@ needing the host (fetch, push, opening a PR, reading an issue) stops at **Awaiti
 ("No GitHub key is set for bob, so I can't push to acme/api — set one in bob's options menu").
 
 #### 5.1.2 First run
-A skippable setup: Claude Code path (checked), install the Claude hook, notes folder, a first project, and **adding
+A skippable setup: Claude Code path (checked), install the Claude hook, a folder to browse, a first project, and **adding
 your keys** to Keys (your own and any bot accounts', per host), ready to pick when creating agents. Creating an agent
 without a key for its project's host shows a warning in its setup form (§7.10).
 
@@ -176,7 +181,6 @@ without a key for its project's host shows a warning in its setup form (§7.10).
 - **Report length** (default 800 characters), **Hop limit** (default 10).
 - **Max agents working at once** (default 4); **idle process timeout** (default 10 minutes; an idle agent's process is closed; its next message
   resumes it).
-- **Notes folder** (§9).
 - **Storage:** space per agent and total (journals and logs of the current and of earlier conversations) and **Clean up
   old data** (applies §7.9 limits now). Never touches branches, project folders or worktrees.
 
@@ -202,6 +206,7 @@ without a key for its project's host shows a warning in its setup form (§7.10).
 | **Spend limit** | USD per process; blank = none. | editable |
 | **Needs a project folder** | Its agents won't start without a project (§7.7). | 🔒 |
 | **Edits files** | Its agents get the project's build & test commands allowed (§5.3), and can receive work through `hand_over` (§4.4). | 🔒 |
+| **Uses Chrome** | Its agents are started with `--chrome` (Claude in Chrome) and, to use it, the profile allows `mcp__claude-in-chrome`. | 🔒 |
 | **Profile commands** | Extra slash commands: name + prompt template. | built-in ones 🔒 |
 | **Skills** | Assigned in the Skills tab. | bundled superpowers assignments 🔒; others editable |
 
@@ -209,7 +214,7 @@ Built-in profiles can't be deleted. **Duplicate** (any profile) makes a fully ed
 skills and commands — the way to change anything locked. Your own profiles are fully editable and deletable.
 
 ### 5.5 Skills
-- Library of skill packs (`SKILL.md`, folder, or `.zip` / `.skill`), copied into `~/.juno/skills`. Each pack applies
+- Library of skill packs (a `SKILL.md`, or a `.zip` / `.skill` archive; folders aren't imported), copied into `~/.juno/skills`. Each pack applies
   to the whole orchestration or chosen profiles; individual skills can be switched off globally or **per profile**.
 - Agents get their skills as a session-only plugin (`--plugin-dir`); nothing is written into project folders.
 - **Bundled: superpowers** (obra/superpowers, MIT). Default assignments: **coder** — every skill, including
@@ -228,7 +233,7 @@ the built-in prompts (§11) read-only.
 | Profile | Model / effort | Permission | Needs folder | Edits files | Tools (defaults) |
 | --- | --- | --- | --- | --- | --- |
 | **orchestrator** | Opus 5.5 / high | default | no | no | Juno tools (all), Read, Grep, Glob |
-| **coder** | Sonnet 5.5 / high | acceptEdits | **yes** | **yes** | file tools; `Bash(git:*)` except `git push --force`; project build & test commands; `hand_over`; host MCP (§6.3): read PRs/MRs, threads and issues, open PR/MR, reply. **Disallowed:** `gh`, `glab`. Any other host tool (approve, merge, close, resolve…) asks you first |
+| **coder** | Sonnet 5.5 / high | acceptEdits | **yes** | **yes** | file tools; `Bash(git:*)` except `git push --force`; project build & test commands; `hand_over`; host MCP (§6.3): read PRs/MRs, threads and issues, open PR/MR, reply; WebSearch, WebFetch and Claude in Chrome (§6.1). **Disallowed:** `gh`, `glab`. Any other host tool (approve, merge, close, resolve…) asks you first |
 | **planner** | Opus 5.5 / max | default | no | no | Read, Grep, Glob, WebSearch, WebFetch; superpowers `brainstorming`, `writing-plans`; host MCP: read only (issues, PRs/MRs). **Disallowed:** Edit, Write |
 | **searcher** | Sonnet 5.5 / medium | default | no | no | WebSearch, WebFetch, Read |
 
@@ -260,6 +265,12 @@ migrated; they match nothing.
     **open an ordinary PR/MR via the host MCP tools** (no remote → stop at the commit). At superpowers' finishing step
     always "push and open a PR" this way: never merge locally, never discard, never `gh`/`glab`.
   - Never approves, merges or closes a PR/MR; merging is yours.
+  - **Web apps:** it has WebSearch and WebFetch for documentation. When the project is a web app it also starts the dev
+    server (only with commands it may run), opens the app in Chrome through the Claude in Chrome tools and checks the
+    page it changed (loads, looks right, the flow works, no new console errors). Only the app's localhost address and
+    pages the task names; never secrets or personal data typed into a page. The extension runs in **your** Chrome, so
+    the tools are allowed without asking for the coder, and the prompt is what limits where it goes. If the tools
+    aren't there it says so and checks with WebFetch instead.
   - **Issues:** when you paste an issue link or number (GitHub or GitLab), it reads the issue and its comments through
     the host MCP tools first and works from them.
   - Acts on review comments only via `/checkforcomments` and on merge conflicts only via `/checkformergeconflicts`
@@ -338,7 +349,8 @@ toolsets at `/mcp/x/<toolset>`; the proxy asks for the default toolset plus `act
 ### 7.2 Top bar and toolbar
 - **Pane top bar:** status (+ reason tag), unread dot, name, profile, project and branch (or "no folder"), model
   and effort; resume, stop, maximise, split, **⋯ options menu** (§7.10). The agent's colour outlines the pane.
-- **Toolbar:** title, **+ New agent**, board / notes / PRs toggle, **inbox**, **usage-limit meter**, Settings.
+- **Toolbar:** icon and title, **+ New agent**, board / folders / PRs toggle, **Agents** (the filter list, §7.6; shown only on
+  the board), **inbox**, **usage-limit meter**, Settings.
 - **Inbox:** count and list of everything waiting on you — assignment proposals, tasks you can still undo, link suggestions,
   fresh-start approvals, permission requests 🔐, folder requests and repositories to clone 📁, missing keys 🔑, removed profiles ⚙,
   questions ❓ (including `/checkforcomments` and `/checkformergeconflicts` decisions), failures and interruptions ⏸.
@@ -362,7 +374,7 @@ Readable blocks, not raw events:
 - per-turn usage and context, kept quiet.
 
 Everything is **selectable and copyable** (drag-select across blocks; copy buttons on every message and code block —
-Markdown / plain code). This is how you take planner and notes-writer output.
+Markdown / plain code). This is how you take planner output.
 
 ### 7.4 Under the terminal
 - **"can talk to:"** Juno and linked agents, in their colours (Juno's pane: "everyone").
@@ -499,18 +511,33 @@ only. To learn what an agent understands, ask it with `/hey`.
 Defined on profiles (§5.4), e.g. the coder's `/checkforcomments` and `/checkformergeconflicts` (§6.2); expanded from their template and sent as a
 message.
 
-## 9. Notepad
-- A toggle switches between the board and **note view**: file tree of the **notes folder**, tabs, Markdown editor with
-  live preview; create, rename, move, delete notes and folders.
-- Agents never get the notes folder; Juno refuses a notes folder inside a project folder or vice versa.
-- One agent's terminal can be shown beside your notes — the same agent (same output and input), still on the board.
+## 9. Folders
+- The toolbar's **Folders** toggle switches the board for the Folders view: a list of **folders you chose** (notes, a
+  project you are working on, your whole dev directory…), tabs and a text editor. Folders are added, removed and
+  ordered **in the view itself** (not in Settings) and kept in `settings.json`.
+- Each listed folder is the root of one file tree. **Expand and collapse** it (and any sub-folder) freely; which ones
+  are collapsed is remembered. Re-order the list with the ↑ / ↓ buttons, the right-click menu, or by dragging one
+  folder onto another. **+ Folder** adds one; "Remove from the list" never deletes anything on disk.
+- A tree lists a folder when it is opened, so a huge directory costs nothing until then. Entries starting with a dot
+  (`.git`, `.obsidian`) are hidden. Every other file is shown; only UTF-8 text files of up to 2 MB open (anything else
+  is refused with a message).
+- Create files and folders (a new file without an extension gets `.md`), rename, move (within its listed folder) and
+  delete (confirmed, permanent), from the right-click menu, F2 / Delete / Enter, or by dragging a row onto a folder.
+- **Editor:** one tab per file, saved by itself 0.7 s after typing stops, on Ctrl+S, on closing the tab, on leaving the
+  view and on closing the window. **Ctrl +** and **Ctrl -** (or Ctrl + mouse wheel) change the text size, **Ctrl 0**
+  resets it; it is remembered. Markdown files get light colouring; there is no preview. A file changed on disk is
+  never overwritten unasked: a clean tab reloads, an edited one offers **Load the disk version** / **Keep mine**.
+- Agents are not kept out of the listed folders: a project folder may be listed, and listed folders may contain each other
+  or a project.
+- One agent's terminal can be shown beside the files — the same agent (same output and input), still on the board.
+- Remembered in `~/.juno/folders.json`: open files, collapsed folders, text size, the agent beside the files.
 
 ## 10. Talking to Claude Code (Provider)
 - No SDK (none exists for Java): Juno runs `claude -p --input-format stream-json --output-format stream-json
   --verbose …` as a child process, writes messages to stdin as JSON lines and reads events from stdout with Jackson —
   the protocol Anthropic's Agent SDKs use.
 - Per launch: `--model`, `--effort`, `--permission-mode`, `--allowedTools`, `--disallowedTools`, `--max-turns`,
-  `--max-budget-usd`, `--append-system-prompt-file`, `--forward-subagent-text`, `--strict-mcp-config` +
+  `--max-budget-usd`, `--append-system-prompt-file`, `--forward-subagent-text`, `--chrome` (profiles that use Chrome), `--strict-mcp-config` +
   `--mcp-config` (Juno's server, plus the host's server for the agent's key), `--plugin-dir`,
   `--permission-prompt-tool`, `--resume <session>`; environment `JUNO_AGENT_ID` and the git settings of §5.1.1.
 - **Version check:** Juno declares a **minimum Claude Code version** (the one its flags were verified against during
@@ -521,11 +548,11 @@ message.
   names the flag and the version.
 - A `Provider` interface holds everything CLI-specific (command line, output → events, resume, MCP config, skills,
   hook install, version check), so another CLI can be added without touching the rest.
-- An agent's output (event list) is separate from any pane showing it (board and note view).
+- An agent's output (event list) is separate from any pane showing it (board and Folders view).
 
 ```
 dev.juno
-├── app        JavaFX entry point, main window, toolbar, board/notes toggle
+├── app        JavaFX entry point, main window, toolbar, board/folders/PRs toggle
 ├── model      profiles, projects, keys, agents, links, settings (plain data, JSON)
 ├── store      ~/.juno persistence: settings, agents, journals, logs
 ├── provider   Provider interface + AgentEvent types (Message, Thinking, ToolUse, Diff, Usage, Result…)
@@ -535,7 +562,7 @@ dev.juno
 ├── git        git environment and credential helper, /diff
 ├── prompts    built-in prompt templates (§11)
 ├── skills     skill library, bundled packs, per-agent plugin folders
-└── ui         board, panes and output blocks, setup form/options menu, settings tabs, notepad, PRs tab, filter list
+└── ui         board, panes and output blocks, setup form/options menu, settings tabs, Folders view, PRs tab, filter list
 ```
 
 ## 11. Built-in prompts
@@ -561,11 +588,28 @@ Besides profiles' system prompts, all natural-language text Juno sends lives as 
 - On Windows, launch npm-installed CLIs via `cmd.exe /c`.
 - Token usage and context size recorded per turn for every agent.
 
-## 13. Open items
-**Answered** (see §6.3): the tools exist on both hosts; some dangerous actions are
-options of tools a profile needs; since the reviewer is gone, Juno no longer filters per action: Claude Code's own rules decide (§6.3);
-GitLab's MCP server takes a fine-grained PAT only, so a GitLab key holds two tokens (§5.1).
+## 13. Verification status and open items
+**Answered** (see §6.3): the tools exist on both hosts; some dangerous actions are options of tools a profile needs;
+since the reviewer is gone, Juno no longer filters per action: Claude Code's own rules decide (§6.3); GitLab's MCP server
+takes a fine-grained PAT only, so a GitLab key holds two tokens (§5.1).
 
-**Verified live on GitHub:** opening a PR, reply, close, and reads. **Still to verify:** everything on
-GitLab (names are from its documentation), including `/checkforcomments`, `/checkformergeconflicts` and reading issues;
-GitHub's `issue_read` and `mergeable_state` with real data; the `<name>.ghe.com` MCP URL.
+**Verified** with the real window and Claude Code 2.1.314 (haiku, low effort), a scratch home and Claude config, and a
+GitHub sandbox repository: the Keys Test (all lines); a coder opening a PR through the proxy and its PRs-tab entry;
+`/checkforcomments` (lists, proposes, waits for the decision, changes nothing before it); `/checkformergeconflicts` on a
+clean PR (`mergeable_state: clean`); every command of §8; Juno's delegation, fresh start, links and hop limit; crash
+recovery (⏸ then `/resume`); the usage meter; the board, options menu and settings tabs; the Folders view (several
+folders, reorder, collapse, text size, an agent beside the files, change-on-disk conflicts).
+Chrome: `--chrome` is accepted together with `--strict-mcp-config` and exposes the `mcp__claude-in-chrome__*` tools.
+
+**Still to verify:**
+- Everything on GitLab (tool names come from its documentation), including `/checkforcomments`,
+  `/checkformergeconflicts` and reading issues; the `<name>.ghe.com` MCP URL.
+- GitHub with real data: a PR that really has merge conflicts, reading issues, a failing or required check, private
+  repositories.
+- `hand_over` against a real model (tested with a fake provider).
+- A token missing a permission (the Test button's failing write checks are unit tested only).
+- Installing the hook into a real `~/.claude` (tests use scratch copies).
+- A coder driving a web app through Claude in Chrome end to end (needs the extension and a running Chrome).
+- The taskbar/dock icon on macOS and Linux (`java.awt.Taskbar`); on Windows the window icon is used.
+- Dragging with a real mouse (panes, files, folders in the list); the underlying moves are tested.
+- If `claude` isn't on `PATH`, agents fail until Settings has its full path.

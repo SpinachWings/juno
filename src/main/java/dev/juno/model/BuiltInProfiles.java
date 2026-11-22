@@ -55,8 +55,10 @@ public final class BuiltInProfiles {
         Profile p = base(CODER, "coder", "claude-sonnet-5-5", "high", "acceptEdits");
         p.needsProjectFolder = true;
         p.editsFiles = true;
+        p.browser = true;
         p.allowedTools.addAll(List.of("Read", "Edit", "Write", "Grep", "Glob", "Bash(git:*)", "Task"));
         p.allowedTools.addAll(List.of("mcp__juno__hand_over", "host:read", "host:open", "host:reply"));
+        p.allowedTools.addAll(List.of("WebSearch", "WebFetch", "mcp__claude-in-chrome"));
         p.disallowedTools.addAll(List.of("Bash(git push --force:*)", "Bash(gh:*)", "Bash(glab:*)"));
         p.commands.add(new ProfileCommand("checkforcomments",
                 Prompts.load("commands/coder-checkforcomments.md"), true));

@@ -13,4 +13,6 @@ public class Settings {
     public List<Project> projects = new ArrayList<>();
     public List<Profile> profiles = new ArrayList<>();
     public List<SkillPack> skillPacks = new ArrayList<>();
+    /** Folders shown in the Folders view, in order (design §9). */
+    public List<String> folders = new ArrayList<>();
 }

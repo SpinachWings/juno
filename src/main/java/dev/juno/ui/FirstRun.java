@@ -8,6 +8,7 @@ import dev.juno.model.Validation;
 import dev.juno.provider.Provider;
 import dev.juno.store.SettingsStore;
 import dev.juno.ui.settings.SettingsWindow;
+import java.nio.file.Path;
 import java.util.List;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -34,7 +35,7 @@ public final class FirstRun {
     private final Label claudeResult = new Label();
     private final Label hookStatus = new Label();
     private final Label hookMessage = Ui.dim("");
-    private final TextField notes = new TextField();
+    private final TextField folder = new TextField();
     private final TextField projectName = new TextField();
     private final TextField projectFolder = new TextField();
     private final TextField projectRemote = new TextField();
@@ -45,7 +46,7 @@ public final class FirstRun {
         stage.setTitle("Welcome to Juno");
         stage.initModality(Modality.WINDOW_MODAL);
         if (owner != null) stage.initOwner(owner);
-        pages = List.of(welcome(), claudePage(), hookPage(), notesPage(), projectPage(), keysPage());
+        pages = List.of(welcome(), claudePage(), hookPage(), foldersPage(), projectPage(), keysPage());
 
         HBox buttons = new HBox(8, skip, Ui.grow(), back, next);
         buttons.setAlignment(Pos.CENTER_RIGHT);
@@ -90,7 +91,7 @@ public final class FirstRun {
 
     private void next() {
         if (index == 1) saveClaudePath();
-        if (index == 3) ctx.settings.system.notesFolder = notes.getText().trim();
+        if (index == 3) addFolder();
         if (index == 4 && !saveProject()) return;
         if (index == pages.size() - 1) {
             finish();
@@ -127,7 +128,7 @@ public final class FirstRun {
         return page("Welcome to Juno",
                 Ui.dim("Juno runs coding agents side by side on a board, with one orchestrator, Juno, who hands out "
                         + "tasks and collects reports."),
-                Ui.dim("A short setup: check Claude Code, install the Claude hook, pick a notes folder, add a first "
+                Ui.dim("A short setup: check Claude Code, install the Claude hook, add a folder to browse, add a first "
                         + "project, and add your GitHub / GitLab keys. Every step can be skipped and everything can "
                         + "be changed later in Settings."));
     }
@@ -181,15 +182,26 @@ public final class FirstRun {
         hookStatus.getStyleClass().setAll("label", st == Provider.HookStatus.INSTALLED ? "good" : "warn");
     }
 
-    private Node notesPage() {
-        notes.setText(ctx.settings.system.notesFolder);
-        notes.setPromptText("Where your notes live (not inside a project folder)");
-        HBox.setHgrow(notes, Priority.ALWAYS);
-        return page("Notes folder",
-                Ui.dim("Your notes are plain Markdown files in a folder you choose. Agents never get this folder."),
-                Ui.row(notes, Ui.button("Browse…", () ->
-                        Ui.chooseFolder(stage, "Notes folder", notes.getText())
-                                .ifPresent(f -> notes.setText(f.getAbsolutePath())))));
+    private Node foldersPage() {
+        folder.setPromptText("A folder to browse and edit, e.g. your notes (optional)");
+        HBox.setHgrow(folder, Priority.ALWAYS);
+        return page("A folder",
+                Ui.dim("The Folders view shows any folders you add: notes, a project, your whole dev directory. Add one "
+                        + "now, or more later in the Folders view."),
+                Ui.row(folder, Ui.button("Browse…", () ->
+                        Ui.chooseFolder(stage, "Add a folder", folder.getText())
+                                .ifPresent(f -> folder.setText(f.getAbsolutePath())))));
+    }
+
+    private void addFolder() {
+        String path = folder.getText().trim();
+        if (path.isEmpty()) return;
+        try {
+            String normal = Path.of(path).toAbsolutePath().normalize().toString();
+            if (java.nio.file.Files.isDirectory(Path.of(normal)) && !ctx.settings.folders.contains(normal)) ctx.settings.folders.add(normal);
+        } catch (java.nio.file.InvalidPathException e) {
+            // not a folder: nothing is added
+        }
     }
 
     private Node projectPage() {
@@ -218,7 +230,7 @@ public final class FirstRun {
         p.remote = projectRemote.getText().trim();
         p.buildAndTestCommands = java.util.Arrays.stream(projectCommands.getText().split("\\R"))
                 .map(String::trim).filter(s -> !s.isEmpty()).toList();
-        List<String> problems = Validation.project(p, ctx.settings.projects, ctx.settings.system.notesFolder);
+        List<String> problems = Validation.project(p, ctx.settings.projects);
         if (!problems.isEmpty()) {
             Ui.problems(stage, problems);
             return false;
@@ -237,14 +249,8 @@ public final class FirstRun {
                         + "accounts' keys per host now, then pick them when you create agents. Tokens are kept in your "
                         + "OS keyring, never in a file."),
                 Ui.button("Open Keys settings…", () -> SettingsWindow.show(ctx, stage, SettingsWindow.Page.KEYS)),
-                Ui.dim("Required token permissions
-
-GitHub
-" + TokenPermissions.forKind(Key.Kind.GITHUB)
-                        + "
-
-GitLab
-" + TokenPermissions.forKind(Key.Kind.GITLAB)),
+                Ui.dim("Required token permissions\n\nGitHub\n" + TokenPermissions.forKind(Key.Kind.GITHUB)
+                        + "\n\nGitLab\n" + TokenPermissions.forKind(Key.Kind.GITLAB)),
                 Ui.dim("Creating an agent for a project whose host has no key shows a warning in its setup form."));
     }
 }

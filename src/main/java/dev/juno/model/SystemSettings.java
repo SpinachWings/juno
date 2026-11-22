@@ -16,7 +16,6 @@ public class SystemSettings {
     public int hopLimit = 10;
     public int maxAgentsWorking = 4;
     public int idleTimeoutMinutes = 10;
-    public String notesFolder = "";
     public boolean firstRunDone = false;
 
     public enum AssignApproval {

@@ -3,11 +3,12 @@ package dev.juno.app;
 import dev.juno.model.Agent;
 import dev.juno.provider.AgentEvent;
 import dev.juno.runtime.AgentRuntime;
+import dev.juno.ui.Icons;
 import dev.juno.ui.Ui;
 import dev.juno.ui.board.BoardView;
 import dev.juno.ui.board.FilterList;
 import dev.juno.ui.board.Inbox;
-import dev.juno.ui.notes.NotesView;
+import dev.juno.ui.folders.FoldersView;
 import dev.juno.ui.prs.PrsView;
 import dev.juno.ui.pane.AgentPane;
 import java.util.List;
@@ -24,7 +25,7 @@ import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
 import javafx.stage.Stage;
 
-/** The main window: toolbar, the board with its agent list, and the board / notes toggle. */
+/** The main window: toolbar, the board with its agent list, and the Board / Folders / PRs toggle. */
 public final class MainWindow {
     private final AppContext ctx;
     private final BorderPane root = new BorderPane();
@@ -34,7 +35,7 @@ public final class MainWindow {
     private final BoardView board;
     private final FilterList filter;
     private final Inbox inbox;
-    private final NotesView notesView;
+    private final FoldersView foldersView;
     private final PrsView prsView;
     private final BorderPane boardArea;
 
@@ -44,15 +45,17 @@ public final class MainWindow {
         this.board = new BoardView(ctx);
         this.filter = new FilterList(ctx, board);
         this.inbox = new Inbox(ctx, board);
-        this.notesView = new NotesView(ctx, board);
+        this.foldersView = new FoldersView(ctx, board);
         this.prsView = new PrsView(ctx);
 
         Label logo = new Label("JUNO");
         logo.getStyleClass().add("logo");
+        logo.setGraphic(Icons.logo(26));
+        logo.setGraphicTextGap(8);
 
         ToggleGroup view = new ToggleGroup();
         ToggleButton boardToggle = new ToggleButton("Board");
-        ToggleButton notes = new ToggleButton("Notes");
+        ToggleButton folders = new ToggleButton("Folders");
         ToggleButton prs = new ToggleButton("PRs");
         Button add = Ui.button("+ New agent", () -> {
             boardToggle.setSelected(true);
@@ -61,13 +64,13 @@ public final class MainWindow {
         Ui.withTip(add, "Splits the pane you used last and asks for the new agent's setup in the new cell.");
 
         boardToggle.setToggleGroup(view);
-        notes.setToggleGroup(view);
+        folders.setToggleGroup(view);
         prs.setToggleGroup(view);
         boardToggle.setSelected(true);
-        Ui.withTip(notes, "Your notes: a file tree, Markdown editor with live preview, and one agent beside them.");
+        Ui.withTip(folders, "Folders you chose (notes, a project, your dev directory): a file tree, a text editor, and one agent beside them.");
         view.selectedToggleProperty().addListener((o, a, b) -> {
             if (b == null) a.setSelected(true);
-            else show(b == notes ? View.NOTES : b == prs ? View.PRS : View.BOARD);
+            else show(b == folders ? View.FOLDERS : b == prs ? View.PRS : View.BOARD);
         });
         Ui.withTip(prs, "The PRs and MRs your agents opened. Entries stay until you close them.");
         ctx.runtime.addListener(new AgentRuntime.Listener() {
@@ -77,11 +80,13 @@ public final class MainWindow {
         });
         prs.setText(prsLabel());
         board.onShowRequested(() -> boardToggle.setSelected(true));
-        stage.addEventHandler(javafx.stage.WindowEvent.WINDOW_HIDING, e -> notesView.flush());
+        stage.addEventHandler(javafx.stage.WindowEvent.WINDOW_HIDING, e -> foldersView.flush());
 
         ToggleButton agentsToggle = new ToggleButton("Agents");
         agentsToggle.setSelected(true);
         Ui.withTip(agentsToggle, "The list of all agents: search, filter, show or hide their panes.");
+        agentsToggle.visibleProperty().bind(boardToggle.selectedProperty());
+        agentsToggle.managedProperty().bind(boardToggle.selectedProperty());
 
         usage.getStyleClass().add("meter");
         usage.setTooltip(new javafx.scene.control.Tooltip("Your Claude plan's limits, from Claude Code's rate-limit "
@@ -89,7 +94,7 @@ public final class MainWindow {
 
         Button settings = Ui.button("Settings", () -> SettingsWindow.show(ctx, stage, SettingsWindow.Page.KEYS));
 
-        HBox bar = new HBox(10, logo, add, boardToggle, notes, prs, agentsToggle, Ui.grow(), inbox.button(), usage, settings);
+        HBox bar = new HBox(10, logo, add, boardToggle, folders, prs, agentsToggle, Ui.grow(), inbox.button(), usage, settings);
         bar.setAlignment(Pos.CENTER_LEFT);
         bar.getStyleClass().add("toolbar-bar");
 
@@ -108,7 +113,7 @@ public final class MainWindow {
         if (ctx.runtime.agents().isEmpty()) board.addAgent();
     }
 
-    private enum View { BOARD, NOTES, PRS }
+    private enum View { BOARD, FOLDERS, PRS }
 
     private View showing = View.BOARD;
 
@@ -116,14 +121,14 @@ public final class MainWindow {
         return prsView.count() == 0 ? "PRs" : "PRs (" + prsView.count() + ")";
     }
 
-    /** Switches between the board, the notepad and the PRs tab; leaving the notepad saves it and returns the lent pane. */
+    /** Switches between the board, the Folders view and the PRs tab; leaving Folders saves its files and returns the lent pane. */
     private void show(View v) {
-        if (showing == View.NOTES && v != View.NOTES) notesView.leave();
+        if (showing == View.FOLDERS && v != View.FOLDERS) foldersView.leave();
         showing = v;
         switch (v) {
-            case NOTES -> {
-                root.setCenter(notesView.root());
-                notesView.show();
+            case FOLDERS -> {
+                root.setCenter(foldersView.root());
+                foldersView.show();
             }
             case PRS -> {
                 prsView.refresh();
