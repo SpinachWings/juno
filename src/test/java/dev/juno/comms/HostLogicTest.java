@@ -95,6 +95,14 @@ class HostLogicTest {
     }
 
     @Test
+    void aGithubAnswerWithOnlyALinkGetsItsNumberFromTheLink() throws Exception {
+        JsonNode args = json("{\"owner\":\"acme\",\"repo\":\"api\",\"title\":\"T\",\"head\":\"b\"}");
+        JsonNode result = json("{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"url\\\":\\\"https://github.com/acme/api/pull/9\\\"}\"}]}");
+        PullRequestEntry e = PullRequestEntry.fromOpen(Key.Kind.GITHUB, args, result, "", bob());
+        assertEquals("#9", e.number);
+    }
+
+    @Test
     void aGitlabAnswerMakesAnEntryAndANumericProjectUsesTheProjectsRemote() throws Exception {
         JsonNode args = json("{\"project_id\":\"123\",\"title\":\"Fix\",\"source_branch\":\"fix/it\",\"target_branch\":\"main\"}");
         JsonNode result = json("{\"content\":[{\"type\":\"text\",\"text\":\"{\\\"iid\\\":7,\\\"web_url\\\":"

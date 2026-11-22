@@ -93,14 +93,23 @@ Everything is under `~/.juno` (or `JUNO_HOME`); every write is atomic.
 
 Juno never touches your project folders' git config, branches or worktrees. Agents never get the notes folder.
 
-## Not yet verified
+## Verified, and not yet verified
+
+Checked by driving the real window and the real Claude Code 2.1.314 (haiku, low effort), with a scratch home and Claude
+config, against a GitHub sandbox repository: the Keys Test (all lines pass), a coder opening a PR through the proxy
+(and the PRs tab entry), `/checkforcomments` (lists, proposes and waits for your decision; changes nothing before),
+`/checkformergeconflicts` on a clean PR (`mergeable_state: clean`), every command of design §8 in a pane, Juno's
+delegation, fresh start, links and hop limit, crash recovery (⏸ then `/resume`), the usage meter, the board, the options
+menu and every settings tab.
+
+Not yet verified:
 
 - **GitLab** end to end: its MCP tool names come from documentation, so a wrong name means an extra permission
   prompt, not an open door. The `<name>.ghe.com` MCP URL is also unverified.
-- GitHub with real data: `issue_read`, `mergeable_state`, a failing or required check, private repositories.
-- `/checkformergeconflicts`, `hand_over` and issue reading against real hosts and models (hand-over is tested with a
-  fake provider).
+- GitHub with real data: a PR that actually has merge conflicts, reading issues, a failing or required check, private
+  repositories.
+- `hand_over` against a real model (it is tested with a fake provider).
 - A token missing a permission was not tried live; the Test button's failing write checks are unit tested only.
-- The full manual pass in the running app (every settings tab, every command, every status) was not done.
+- Installing the Claude hook into a real `~/.claude` (the tests use scratch copies).
 - Dragging a pane or a notes row onto another with a real mouse; the underlying moves are tested.
 - If `claude` isn't on `PATH`, agents fail until Settings has its full path.

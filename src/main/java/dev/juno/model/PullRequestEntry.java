@@ -33,8 +33,12 @@ public class PullRequestEntry {
         e.openedAt = System.currentTimeMillis();
         boolean gitlab = kind == Key.Kind.GITLAB;
         String n = first(answer.path(gitlab ? "iid" : "number"), answer.path("number"), answer.path("iid"));
-        e.number = n.isBlank() ? "" : (gitlab ? "!" : "#") + n;
         e.url = first(answer.path("html_url"), answer.path("web_url"), answer.path("url"));
+        if (n.isBlank()) { // GitHub's MCP answer can carry only the link
+            java.util.regex.Matcher m = java.util.regex.Pattern.compile("/(?:pull|merge_requests)/(\\d+)").matcher(e.url);
+            if (m.find()) n = m.group(1);
+        }
+        e.number = n.isBlank() ? "" : (gitlab ? "!" : "#") + n;
         e.title = first(answer.path("title"), args.path("title"));
         e.branch = first(args.path(gitlab ? "source_branch" : "head"), answer.at("/head/ref"), answer.path("source_branch"));
         String repo = gitlab ? first(args.path("project_id")) : first(args.path("owner")) + "/" + first(args.path("repo"));

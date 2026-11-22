@@ -59,6 +59,7 @@ public final class ScreenshotTool {
         ctx.settings.projects.add(p);
         ctx.save();
 
+        ctx.runtime.start();
         Platform.startup(() -> {});
         run(() -> {
             Stage main = new Stage();
