@@ -38,11 +38,4 @@ public interface TokenStore {
     static boolean isEnvReference(String reference) {
         return reference != null && reference.startsWith("env:");
     }
-
-    /** Masked display of a stored token, never the full token. */
-    static String mask(String token) {
-        if (token == null || token.isEmpty()) return "";
-        String tail = token.length() > 8 ? token.substring(token.length() - 4) : "";
-        return "••••••••" + tail;
-    }
 }

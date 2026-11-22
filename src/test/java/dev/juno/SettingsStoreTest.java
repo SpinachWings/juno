@@ -107,14 +107,6 @@ class SettingsStoreTest {
     }
 
     @Test
-    void maskingNeverShowsTheWholeToken() {
-        assertEquals("", TokenStore.mask(""));
-        assertFalse(TokenStore.mask("ghp_abcdefghijklmnop").contains("ghp_abcdefghijkl"));
-        assertTrue(TokenStore.mask("ghp_abcdefghijklmnop").endsWith("mnop"));
-        assertEquals("••••••••", TokenStore.mask("short"));
-    }
-
-    @Test
     void savedReviewerAndNotesWriterProfilesAreDropped() {
         SettingsStore store = new SettingsStore(new JunoHome(tmp));
         Settings s = store.load();

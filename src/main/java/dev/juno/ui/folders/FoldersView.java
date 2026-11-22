@@ -333,13 +333,6 @@ public final class FoldersView {
         return it == null ? null : it.getValue();
     }
 
-    /** Where "New file" goes: the selected folder, a selected file's folder, or the first listed folder's top. */
-    private Item selectedFolder() {
-        Item e = selectedItem();
-        if (e == null) return trees.isEmpty() ? null : new Item(trees.get(0), "", label(trees.get(0)), true);
-        return folderOf(e);
-    }
-
     private static Item folderOf(Item v) {
         if (v.folder()) return v;
         String parent = v.path().contains("/") ? v.path().substring(0, v.path().lastIndexOf('/')) : "";

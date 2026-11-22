@@ -48,7 +48,7 @@ $env:JUNO_HOME = "$env:TEMP\juno-scratch"; mvn javafx:run
 
 ## Checking things (notes for Claude)
 - Real window checks use the drivers in `src/test/java/dev/juno/ui` (`BoardScreens`, `JunoScreens`, `FoldersScreens`,
-  `ChangeScreens`, `ScreenshotTool`): `java -cp "target/classes;target/test-classes;<mvn dependency:build-classpath>"
+  `AgentScreens`, `ScreenshotTool`): `java -cp "target/classes;target/test-classes;<mvn dependency:build-classpath>"
   dev.juno.ui.<Driver> <scratch dir> <output dir> [scenario]` writes a PNG per step. Real-agent checks run haiku at low
   effort with a scratch `JUNO_HOME` and a scratch `CLAUDE_CONFIG_DIR` (the user logs in there once with `claude` and
   `/login`; never copy their credentials).
