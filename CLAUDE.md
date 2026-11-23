@@ -54,7 +54,6 @@ $env:JUNO_HOME = "$env:TEMP\juno-scratch"; mvn javafx:run
   `/login`; never copy their credentials).
 - In Git Bash set `MSYS_NO_PATHCONV=1` when passing a leading-slash argument such as `/help` to a driver, or it is
   turned into a Windows path. `claude` may not be on the user's PowerShell `PATH`; the full path goes in Settings.
-- Sandbox GitHub repository for host checks: `SpinachWings/terrible-workout-tracker`. The user supplies a throwaway token
-  for the run; pass it only as an environment variable, never write it to a file, and close any PR and delete any branch
-  made.
+- GitHub host checks need a sandbox repository and a throwaway token, both supplied by the user for the run. Pass the
+  token only as an environment variable, never write it to a file, and close any PR and delete any branch made.
 - Write Java edits with the Edit tool; inline Python or shell heredocs mangle backslash escapes in Java strings.
