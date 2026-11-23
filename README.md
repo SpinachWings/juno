@@ -30,8 +30,9 @@ $env:JUNO_HOME = "$env:TEMP\juno-scratch"; mvn javafx:run
 ## First run
 
 A skippable setup walks through: the Claude Code path (checked), installing the Claude hook (it makes "Awaiting
-decision" and "Done" exact; it is merged into `~/.claude/settings.json` after a backup), a folder to browse, a first
-project, and your GitHub / GitLab keys. All of it can be done later.
+decision" and "Done" exact; it is merged into `~/.claude/settings.json`, and a copy of that file is saved first), and
+your GitHub / GitLab keys. All of it can be done later in Settings. Projects are added in Settings → Projects, and
+folders in the Folders view.
 
 ## The board
 

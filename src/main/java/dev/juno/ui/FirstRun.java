@@ -2,13 +2,9 @@ package dev.juno.ui;
 
 import dev.juno.app.AppContext;
 import dev.juno.model.Key;
-import dev.juno.model.Project;
 import dev.juno.model.TokenPermissions;
-import dev.juno.model.Validation;
 import dev.juno.provider.Provider;
-import dev.juno.store.SettingsStore;
 import dev.juno.ui.settings.SettingsWindow;
-import java.nio.file.Path;
 import java.util.List;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
@@ -35,18 +31,13 @@ public final class FirstRun {
     private final Label claudeResult = new Label();
     private final Label hookStatus = new Label();
     private final Label hookMessage = Ui.dim("");
-    private final TextField folder = new TextField();
-    private final TextField projectName = new TextField();
-    private final TextField projectFolder = new TextField();
-    private final TextField projectRemote = new TextField();
-    private final TextArea projectCommands = new TextArea();
 
     private FirstRun(AppContext ctx, Window owner) {
         this.ctx = ctx;
         stage.setTitle("Welcome to Juno");
         stage.initModality(Modality.WINDOW_MODAL);
         if (owner != null) stage.initOwner(owner);
-        pages = List.of(welcome(), claudePage(), hookPage(), foldersPage(), projectPage(), keysPage());
+        pages = List.of(welcome(), claudePage(), hookPage(), keysPage());
 
         HBox buttons = new HBox(8, skip, Ui.grow(), back, next);
         buttons.setAlignment(Pos.CENTER_RIGHT);
@@ -91,8 +82,6 @@ public final class FirstRun {
 
     private void next() {
         if (index == 1) saveClaudePath();
-        if (index == 3) addFolder();
-        if (index == 4 && !saveProject()) return;
         if (index == pages.size() - 1) {
             finish();
             return;
@@ -128,8 +117,8 @@ public final class FirstRun {
         return page("Welcome to Juno",
                 Ui.dim("Juno runs coding agents side by side on a board, with one orchestrator, Juno, who hands out "
                         + "tasks and collects reports."),
-                Ui.dim("A short setup: check Claude Code, install the Claude hook, add a folder to browse, add a first "
-                        + "project, and add your GitHub / GitLab keys. Every step can be skipped and everything can "
+                Ui.dim("A short setup: check Claude Code, install the Claude hook, and add your GitHub / GitLab keys. "
+                        + "Projects and folders are added later, where you use them. Every step can be skipped and everything can "
                         + "be changed later in Settings."));
     }
 
@@ -180,67 +169,6 @@ public final class FirstRun {
         Provider.HookStatus st = ctx.provider.hookStatus();
         hookStatus.setText(st.name().toLowerCase().replace('_', ' '));
         hookStatus.getStyleClass().setAll("label", st == Provider.HookStatus.INSTALLED ? "good" : "warn");
-    }
-
-    private Node foldersPage() {
-        folder.setPromptText("A folder to browse and edit, e.g. your notes (optional)");
-        HBox.setHgrow(folder, Priority.ALWAYS);
-        return page("A folder",
-                Ui.dim("The Folders view shows any folders you add: notes, a project, your whole dev directory. Add one "
-                        + "now, or more later in the Folders view."),
-                Ui.row(folder, Ui.button("Browse…", () ->
-                        Ui.chooseFolder(stage, "Add a folder", folder.getText())
-                                .ifPresent(f -> folder.setText(f.getAbsolutePath())))));
-    }
-
-    private void addFolder() {
-        String path = folder.getText().trim();
-        if (path.isEmpty()) return;
-        try {
-            String normal = Path.of(path).toAbsolutePath().normalize().toString();
-            if (java.nio.file.Files.isDirectory(Path.of(normal)) && !ctx.settings.folders.contains(normal)) ctx.settings.folders.add(normal);
-        } catch (java.nio.file.InvalidPathException e) {
-            // not a folder: nothing is added
-        }
-    }
-
-    private Node projectPage() {
-        HBox.setHgrow(projectFolder, Priority.ALWAYS);
-        projectName.setPromptText("e.g. api");
-        projectFolder.setPromptText("Local repository folder");
-        projectRemote.setPromptText("owner/repo or group/project, optional");
-        projectCommands.setPromptText("Build & test commands, one per line, optional");
-        projectCommands.setPrefRowCount(4);
-        return page("A first project",
-                Ui.dim("A project is a local repository, optionally with a GitHub or GitLab remote. Leave it blank to add "
-                        + "projects later."),
-                new Label("Name"), projectName, new Label("Folder"),
-                Ui.row(projectFolder, Ui.button("Browse…", () ->
-                        Ui.chooseFolder(stage, "Repository folder", projectFolder.getText())
-                                .ifPresent(f -> projectFolder.setText(f.getAbsolutePath())))),
-                new Label("Remote"), projectRemote, new Label("Build & test commands"), projectCommands);
-    }
-
-    private boolean saveProject() {
-        if (projectName.getText().isBlank() && projectFolder.getText().isBlank()) return true;
-        Project p = new Project();
-        p.id = SettingsStore.newId();
-        p.name = projectName.getText().trim();
-        p.folder = projectFolder.getText().trim();
-        p.remote = projectRemote.getText().trim();
-        p.buildAndTestCommands = java.util.Arrays.stream(projectCommands.getText().split("\\R"))
-                .map(String::trim).filter(s -> !s.isEmpty()).toList();
-        List<String> problems = Validation.project(p, ctx.settings.projects);
-        if (!problems.isEmpty()) {
-            Ui.problems(stage, problems);
-            return false;
-        }
-        ctx.settings.projects.add(p);
-        projectName.clear();
-        projectFolder.clear();
-        projectRemote.clear();
-        projectCommands.clear();
-        return true;
     }
 
     private Node keysPage() {

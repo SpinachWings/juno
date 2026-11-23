@@ -166,8 +166,7 @@ needing the host (fetch, push, opening a PR, reading an issue) stops at **Awaiti
 ("No GitHub key is set for bob, so I can't push to acme/api — set one in bob's options menu").
 
 #### 5.1.2 First run
-A skippable setup: Claude Code path (checked), install the Claude hook, a folder to browse, a first project, and **adding
-your keys** to Keys (your own and any bot accounts', per host), ready to pick when creating agents. Creating an agent
+A skippable setup: Claude Code path (checked), install the Claude hook, and **adding your keys** to Keys (your own and any bot accounts', per host), ready to pick when creating agents. Creating an agent
 without a key for its project's host shows a warning in its setup form (§7.10).
 
 ### 5.2 System settings
@@ -599,6 +598,8 @@ GitHub sandbox repository: the Keys Test (all lines); a coder opening a PR throu
 clean PR (`mergeable_state: clean`); every command of §8; Juno's delegation, fresh start, links and hop limit; crash
 recovery (⏸ then `/resume`); the usage meter; the board, options menu and settings tabs; the Folders view (several
 folders, reorder, collapse, text size, an agent beside the files, change-on-disk conflicts).
+The hook was installed into a real `~/.claude` from the first-run screen and the status turned to installed (reported by the
+user; removal is the Uninstall button in System settings).
 Chrome: `--chrome` is accepted together with `--strict-mcp-config` and exposes the `mcp__claude-in-chrome__*` tools.
 
 **Still to verify:**
@@ -608,7 +609,6 @@ Chrome: `--chrome` is accepted together with `--strict-mcp-config` and exposes t
   repositories.
 - `hand_over` against a real model (tested with a fake provider).
 - A token missing a permission (the Test button's failing write checks are unit tested only).
-- Installing the hook into a real `~/.claude` (tests use scratch copies).
 - A coder driving a web app through Claude in Chrome end to end (needs the extension and a running Chrome).
 - The taskbar/dock icon on macOS and Linux (`java.awt.Taskbar`); on Windows the window icon is used.
 - Dragging with a real mouse (panes, files, folders in the list); the underlying moves are tested.
