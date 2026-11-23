@@ -598,8 +598,9 @@ GitHub sandbox repository: the Keys Test (all lines); a coder opening a PR throu
 clean PR (`mergeable_state: clean`); every command of §8; Juno's delegation, fresh start, links and hop limit; crash
 recovery (⏸ then `/resume`); the usage meter; the board, options menu and settings tabs; the Folders view (several
 folders, reorder, collapse, text size, an agent beside the files, change-on-disk conflicts).
-The hook was installed into a real `~/.claude` from the first-run screen and the status turned to installed (reported by the
-user; removal is the Uninstall button in System settings).
+The hook: installed into a real `~/.claude` from the first-run screen (status turned to installed, reported by the user), and
+run end to end against a scratch config: Claude Code ran the script during a real haiku turn and the agent's hook-event file
+received the events. Not exercised: the permission-wait (`Notification`) event.
 Chrome: `--chrome` is accepted together with `--strict-mcp-config` and exposes the `mcp__claude-in-chrome__*` tools.
 
 **Still to verify:**
